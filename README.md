@@ -16,3 +16,11 @@ finally, run model:
 ```
 python main.py
 ```
+
+The experimental results are recorded in [this FeiShu link](https://eve0wcbe0c.feishu.cn/wiki/EvigwZ0OriBi6IkB2U1cNmSRnid?from=from_copylink)
+
+NOTE:
+If you use the server (10.32.80.5:22), just git clone this repo:
+```
+git clone /home/zhaoxuhao/git/repo/badminton.git
+```
