@@ -3,17 +3,18 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 
-def visual_df(result_dir, df):
-    save_path = './visualization'
-    suffix = result_dir.split('/')[-1].split('.')[0]
+def visual_df(name, log_time, df):
+    save_path = f'./visualization/{name}/'
+    os.makedirs(save_path, exist_ok=True)
 
     # 提取预测和真实的 xy
     pred_xy = df[["pred_x", "pred_y"]].values
     target_xy = df[["label_x", "label_y"]].values
 
     # 随机采样 30%
+    threshold = 0.3
     N = pred_xy.shape[0]
-    mask = np.random.rand(N) < 0.5
+    mask = np.random.rand(N) < 0.3
     pred_xy = pred_xy[mask]
     target_xy = target_xy[mask]
 
@@ -26,11 +27,11 @@ def visual_df(result_dir, df):
 
     plt.xlabel("X Coordinate")
     plt.ylabel("Y Coordinate")
-    plt.title("Predicted vs True Landing Points (50% sampled)")
+    plt.title(f"Predicted vs True Landing Points ({threshold} sampled)")
     plt.grid(True)
     plt.legend()
     # plt.savefig("pred_vs_true_xy.png", dpi=300)
-    file_name = suffix + "_visual_result.pdf"
+    file_name = name + "_" + log_time + "_visual_result.pdf"
     file_path = os.path.join(save_path, file_name)
     plt.savefig(file_path)
 
@@ -62,7 +63,7 @@ def visual_df(result_dir, df):
     plt.legend()
 
     plt.tight_layout()
-    file_name = suffix + "_error_distributions.pdf"
+    file_name = name + "_" + log_time + "_error_distributions.pdf"
     file_path = os.path.join(save_path, file_name)
     plt.savefig(file_path)
 
@@ -70,7 +71,7 @@ if __name__ == '__main__':
     from main import set_seed
     
     set_seed(seed=42)
-    result_dir = "./results/SimplifiedLSTMRegressor_20250913_155153.csv"
+    result_dir = "./results/TransformerModel/20250918_134619.csv"
     # 读取结果
     df = pd.read_csv(result_dir)
-    visual_df(result_dir, df)
+    visual_df('TransformerModel', '20250918_134619', df)

@@ -92,11 +92,11 @@ def collate_fn_dynamic(batch):
         pad_len = max_len - l
         if pad_len > 0:
             pad = torch.zeros(pad_len, feature_dim, dtype=seq.dtype)
-            seq_padded = torch.cat([seq, pad], dim=0)
+            seq_padded = torch.cat([pad, seq], dim=0)
         else:
             seq_padded = seq
-        mask = torch.zeros(max_len, dtype=torch.float32)
-        mask[:l] = 1.0
+        mask = torch.ones(max_len, dtype=torch.bool)  # 先全设为True（默认填充）
+        mask[:pad_len] = False  # 将前pad_l个位置设为False
 
         seqs_padded.append(seq_padded)
         masks.append(mask)
@@ -206,78 +206,6 @@ def down_sampling(samples: List[Dict],
     random.shuffle(expanded_samples)
     return expanded_samples
 
-
-# class BadmintonDataset(Dataset):
-#     """
-#     Dataset 保存每个样本的完整逐帧数据，并在 __getitem__ 中返回一个随机时间窗。
-#     增加了 feature/label 的归一化。
-#     """
-
-#     def __init__(self, samples: List[Dict], min_len: int = 10, max_len: int = 50, num_subsamples: int = 5,
-#                  mode: str = "train",
-#                  feature_mean=None, feature_std=None,
-#                  label_mean=None, label_std=None):
-#         super().__init__()
-#         assert len(samples) > 0
-#         self.samples = samples
-#         self.min_len = min_len
-#         self.max_len = max_len
-#         self.mode = mode
-#         self.num_subsamples = num_subsamples
-
-#         if mode == "train":
-#             # 上采样训练样本
-#             self.samples = resampling(self.samples, self.num_subsamples)
-#             # ------- 统计归一化参数 -------
-#             # 所有帧堆叠 (N*L, 63)
-#             all_features = np.concatenate([s["frames"] for s in samples], axis=0)
-#             # 所有 label (N, 4) -> (x,y,z,time)
-#             all_labels = np.stack([np.concatenate([s["label_xyz"], [s["drop_frame"] - s["frame_ids"][-1]]])
-#                                     for s in samples], axis=0)
-#             self.feature_mean = all_features.mean(axis=0, keepdims=True)
-#             self.feature_std = all_features.std(axis=0, keepdims=True) + 1e-6
-
-#             self.label_mean = all_labels.mean(axis=0, keepdims=True)
-#             self.label_std = all_labels.std(axis=0, keepdims=True) + 1e-6
-#         else:
-#             # 随机采样测试样本；从100帧中随机抽帧作为测试输入
-#             self.samples = down_sampling(samples)
-#             # 验证/测试必须传入 train 的统计量
-#             self.feature_mean = feature_mean
-#             self.feature_std = feature_std
-#             self.label_mean = label_mean
-#             self.label_std = label_std
-
-#     def __len__(self):
-#         return len(self.samples)
-
-#     def __getitem__(self, idx):
-#         s = self.samples[idx]
-#         seq = torch.from_numpy(s["frames"]).float()
-#         # frame_ids = torch.from_numpy(s["frame_ids"])
-#         drop_frame = s["drop_frame"]
-#         label_xyz = torch.tensor(s["label_xyz"], dtype=torch.float32)
-#         length = seq.shape[0]
-
-#         # label_time: 落地帧 - 当前序列最后一帧
-#         label_time = drop_frame - s["frame_ids"][-1]
-#         label_time = torch.tensor(label_time, dtype=torch.float32)
-
-#         # ------- 归一化 -------
-#         seq = (seq - torch.from_numpy(self.feature_mean).float()) / torch.from_numpy(self.feature_std).float()
-#         label_all = torch.cat([label_xyz, label_time.unsqueeze(0)], dim=0)
-#         label_all = (label_all - torch.from_numpy(self.label_mean).squeeze(0).float()) / \
-#                     torch.from_numpy(self.label_std).squeeze(0).float()
-
-#         label_xyz_norm = label_all[:3]
-#         label_time_norm = label_all[3]
-
-#         return seq, torch.tensor(length, dtype=torch.long), label_xyz_norm, label_time_norm
-
-#     def get_norm_stats(self):
-#         return self.feature_mean, self.feature_std, self.label_mean, self.label_std
-
-
 class BadmintonDataset(Dataset):
     def __init__(self, samples: List[Dict], min_len: int = 10, max_len: int = 50,
                  mode: str = "train",
@@ -291,6 +219,7 @@ class BadmintonDataset(Dataset):
         self.max_len = max_len
         self.mode = mode
 
+
         if mode == "train":
             # 统计归一化参数（仅初始化时统计一次）
             all_features = np.concatenate([s["frames"] for s in samples], axis=0)
@@ -300,9 +229,11 @@ class BadmintonDataset(Dataset):
             self.feature_std = all_features.std(axis=0, keepdims=True) + 1e-6
             self.label_mean = all_labels.mean(axis=0, keepdims=True)
             self.label_std = all_labels.std(axis=0, keepdims=True) + 1e-6
+            self.noise_std_x = self.label_std[0][0]/5 # 176.7 * 0.1（可后续调为1/8或1/5倍）
+            self.noise_std_y = self.label_std[0][1]/5  # 181.86 * 0.1
 
             # resampling_v2, 每个样本copy几份
-            self.samples = resampling_v2(self.samples)
+            self.samples = resampling_v2(self.samples, num_subsamples)
         else:
             # 验证/测试：使用训练集的统计量
             self.feature_mean = feature_mean
@@ -318,7 +249,6 @@ class BadmintonDataset(Dataset):
         total_frames = s["frames"]
         total_frame_ids = s["frame_ids"]
         drop_frame = s["drop_frame"]
-        label_xyz = torch.tensor(s["label_xyz"], dtype=torch.float32)
 
         # 动态生成子样本（仅训练时随机截取，测试时取固定长度）
         if self.mode == "train":
@@ -326,7 +256,8 @@ class BadmintonDataset(Dataset):
             seq_len = np.random.randint(self.min_len, self.max_len + 1)
             if seq_len > total_len:
                 seq_len = total_len  # 防止长度超过原始序列
-            end_idx = np.random.randint(seq_len - 1, total_len)
+            # end_idx = np.random.randint(seq_len - 1, total_len)
+            end_idx = total_len - 1
             start_idx = end_idx - seq_len + 1
         else:
             # 测试时：从结尾取固定长度（或保持原始逻辑）
@@ -341,14 +272,22 @@ class BadmintonDataset(Dataset):
         seq = torch.from_numpy(total_frames[start_idx:end_idx+1]).float()
         frame_ids = total_frame_ids[start_idx:end_idx+1]
         length = seq.shape[0]
-
-        # 计算 label_time
-        label_time = drop_frame - frame_ids[-1]
-        label_time = torch.tensor(label_time, dtype=torch.float32)
+        label_xyz_raw = torch.tensor(s["label_xyz"], dtype=torch.float32)  # 原始XY轴标签（物理空间）
+        label_time_raw = torch.tensor(drop_frame - frame_ids[-1], dtype=torch.float32)  # 时间标签（暂不加噪声）
 
         # 归一化
         seq = (seq - torch.from_numpy(self.feature_mean).float()) / torch.from_numpy(self.feature_std).float()
-        label_all = torch.cat([label_xyz, label_time.unsqueeze(0)], dim=0)
+        # 训练集专属：XY轴标签加噪声（核心步骤）
+        # if self.mode == "train":
+        #     # 2.1 确保噪声在原始物理空间添加（先反归一化？不——这里label_xyz_raw是原始空间，无需反归一化）
+        #     # 生成高斯噪声（与标签同设备、同 dtype）
+        #     noise_x = torch.normal(mean=0.0, std=self.noise_std_x, size=[], dtype=label_xyz_raw.dtype, device=label_xyz_raw.device)
+        #     noise_y = torch.normal(mean=0.0, std=self.noise_std_y, size=[], dtype=label_xyz_raw.dtype, device=label_xyz_raw.device)
+        #     # 给XY轴标签加噪声（Z轴若无需增强可跳过）
+        #     label_xyz_raw[0] += noise_x  # X轴加噪声
+        #     label_xyz_raw[1] += noise_y  # Y轴加噪声
+        
+        label_all = torch.cat([label_xyz_raw, label_time_raw.unsqueeze(0)], dim=0)
         label_all = (label_all - torch.from_numpy(self.label_mean).squeeze(0).float()) / \
                     torch.from_numpy(self.label_std).squeeze(0).float()
 
@@ -362,10 +301,11 @@ class BadmintonDataset(Dataset):
     
 
 if __name__ == "__main__": 
-    path = '/home/zhaoxuhao/badminton_xh/20250809_Seq_data/20250809_150058---008377.txt' 
+    # path = '/home/zhaoxuhao/badminton_xh/20250809_Seq_data/20250809_150058---008377.txt' 
     import argparse 
     parser = argparse.ArgumentParser() 
-    parser.add_argument('--data_folder', type=str, default='/home/zhaoxuhao/badminton_xh/20250809_Seq_data') 
+    # parser.add_argument('--data_folder', type=str, default='/home/zhaoxuhao/badminton_xh/20250809_Seq_data') 
+    parser.add_argument('--data_folder', type=str, default='/home/zhaoxuhao/badminton_xh/20250809_Seq_data_v2/20250809_Seq_data')
     args = parser.parse_args() 
     # 加载所有样本 
     samples = load_all_samples(args.data_folder) 

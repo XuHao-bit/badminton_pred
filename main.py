@@ -44,13 +44,12 @@ def setup_logger(timestamp, log_dir="./logs"):
 
 def main():
     start_time = datetime.now().strftime("%Y%m%d_%H%M%S")
-    logger = setup_logger(start_time)
-    logger.time = start_time
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data_folder', type=str, default='/home/zhaoxuhao/badminton_xh/20250809_Seq_data')
+    # parser.add_argument('--data_folder', type=str, default='/home/zhaoxuhao/badminton_xh/20250809_Seq_data_v2/20250809_Seq_data')
+    parser.add_argument('--data_folder', type=str, default='/home/zhaoxuhao/badminton_xh/20250809_Seq_data_v3')
     parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--epochs", type=int, default=50)
     # parser.add_argument("--hidden_dim", type=int, default=128)
     # parser.add_argument("--num_layers", type=int, default=2)
@@ -63,6 +62,23 @@ def main():
     parser.add_argument("--delta", type=float, default=1.0) # for huber loss (xyz loss)
     parser.add_argument("--lambda_time", type=float, default=0.1) # for huber loss (xyz loss)
     args = parser.parse_args()
+
+    # 定义模型
+    # model = LSTMRegressor()
+    # model = ImprovedLSTMRegressor()
+    # model = SimplifiedLSTMRegressor()
+    model = TransformerModel()
+
+    # Init Logger
+    logger = setup_logger(start_time, log_dir=f"./logs/{model.name}")
+    logger.time = start_time
+    args.model_dir = os.path.join(args.model_dir, model.name)
+    args.results_dir = os.path.join(args.results_dir, model.name)
+    
+    logger.info("========== Model 信息 ==========")
+    logger.info(model)
+
+    logger.info("========== Config 信息 ==========")
     for arg in vars(args):
         logger.info(f"--{arg}: {getattr(args, arg)}")
 
@@ -92,13 +108,6 @@ def main():
     logger.info(f"标签 mean: {label_mean.shape}, 值: {label_mean[0]}")
     logger.info(f"标签 std : {label_std.shape}, 值: {label_std[0]}")
 
-    # 2. 定义模型
-    # model = LSTMRegressor()
-    # model = ImprovedLSTMRegressor()
-    model = SimplifiedLSTMRegressor()
-    logger.info("========== Model 信息 ==========")
-    logger.info(model)
-
     # 3. 定义 Trainer
     trainer = Trainer(
         args=args,
@@ -119,7 +128,8 @@ def main():
 
     # 6. 可视化
     set_seed()
-    visual_df(args.results_dir, res_df)
+    visual_df(model.name, start_time, res_df)
+    logger.info(f"📄 Saved visualization")
 
 if __name__ == "__main__":
     main()

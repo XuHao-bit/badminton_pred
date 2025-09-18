@@ -108,7 +108,7 @@ def main():
     )
 
     # 5. 测试并保存结果
-    trainer.best_model_path = ''
+    trainer.best_model_path = '' # 测试模型的path
     trainer.test_and_save(save_dir=args.results_dir)
 
 if __name__ == "__main__":

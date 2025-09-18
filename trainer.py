@@ -30,8 +30,10 @@ class Trainer:
         self.train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn_dynamic)
         self.test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn_dynamic)
 
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr, weight_decay=1e-3)
+        # self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr, weight_decay=1e-5)
         self.criterion = torch.nn.MSELoss()
+        self.l1_criterion = torch.nn.L1Loss()
 
         self.save_dir = save_dir
         self.best_model_path = os.path.join(self.save_dir, f"{self.model.name}_{self.logger.time}.pt")
@@ -56,7 +58,7 @@ class Trainer:
         # return self.criterion(pred_xyz, labels_xyz)
 
     def train(self, num_epochs=50):
-        best_loss = float("inf")
+        best_loss, best_xyz_err, best_time_err = float("inf"), 0, 0
 
         for epoch in range(num_epochs):
             self.model.train()
@@ -66,12 +68,13 @@ class Trainer:
                 seqs, lengths, masks, labels_xyz, labels_time = [b.to(self.device) for b in batch]
 
                 self.optimizer.zero_grad()
-                pred_xyz, pred_time = self.model(seqs, lengths)
+                pred_xyz, pred_time = self.model(seqs, lengths, masks)
 
-                loss_xyz = self.cal_xyz_loss(pred_xyz, labels_xyz)
-                loss_time = self.criterion(pred_time, labels_time)
+                # loss_xyz = self.cal_xyz_loss(pred_xyz, labels_xyz)
+                loss_xyz = self.criterion(pred_xyz, labels_xyz)
+                # loss_time = self.criterion(pred_time, labels_time)
+                loss_time = self.l1_criterion(pred_time, labels_time)
                 loss = loss_xyz + self.lambda_time * loss_time
-                # loss = loss_xyz 
 
                 loss.backward()
                 self.optimizer.step()
@@ -82,18 +85,20 @@ class Trainer:
             res_str = f"Epoch {epoch+1}: [Train] Loss = {avg_loss:.4f}|"
 
             # validation
-            avg_xyz_loss, avg_time_loss, avg_xyz_err, avg_time_err = self.evaluate()
-            res_str += f"\t[Valid] XYZ Loss = {avg_xyz_loss:.4f}|\tTime Loss = {avg_time_loss:.4f}|"
-            res_str += f"\tXYZ Err(L2 Distance): {avg_xyz_err:.4f}|\tTime Err: {avg_time_err:.4f}"
+            avg_xyz_loss, avg_time_loss, avg_xyz_err, avg_xy_err, avg_time_err = self.evaluate()
+            res_str += f"\t[Valid] Loss = {avg_xyz_loss+self.lambda_time*avg_time_loss:.4f}(XYZ:{avg_xyz_loss:.2f}; Time:{avg_time_loss:.2f})|"
+            res_str += f"\tXYZ Err(L2 Distance): {avg_xyz_err:.4f}|\tXY Err: {avg_xy_err:.4f}|\tTime Err: {avg_time_err:.4f}"
             self.logger.info(res_str)
 
             # save best model
             if avg_xyz_loss + self.lambda_time * avg_time_loss < best_loss:
                 best_loss = avg_xyz_loss + self.lambda_time * avg_time_loss
+                best_xyz_err = avg_xyz_err
+                best_time_err = avg_time_err
                 torch.save(self.model.state_dict(), self.best_model_path)
                 self.logger.info(f"✅ Saved best model to {self.best_model_path}")
 
-        self.logger.info(f"Training finished. Best validation loss: {best_loss:.4f}")
+        self.logger.info(f"Training finished. Best [Valid] loss: {best_loss:.4f}|\tXYZ Err: {best_xyz_err:.4f}|\tTime Err: {best_time_err:.4f}")
 
     def evaluate(self):
         self.model.eval()
@@ -105,7 +110,7 @@ class Trainer:
         with torch.no_grad():
             for batch in self.test_loader:
                 seqs, lengths, masks, labels_xyz, labels_time = [b.to(self.device) for b in batch]
-                pred_xyz, pred_time = self.model(seqs, lengths)
+                pred_xyz, pred_time = self.model(seqs, lengths, masks)
 
                 loss_xyz = self.criterion(pred_xyz, labels_xyz)
                 loss_time = self.criterion(pred_time, labels_time)
@@ -125,9 +130,10 @@ class Trainer:
         avg_xyz_loss = xyz_loss / len(self.test_loader)
         avg_time_loss = time_loss / len(self.test_loader)
         avg_xyz_dist = np.mean(np.linalg.norm(xyz_preds - xyz_labels, axis=1))
+        avg_xy_dist = np.mean(np.linalg.norm(xyz_preds[:, :2] - xyz_labels[:, :2], axis=1))
         avg_time_err = np.mean(np.abs(time_preds - time_labels))
 
-        return avg_xyz_loss, avg_time_loss, avg_xyz_dist, avg_time_err
+        return avg_xyz_loss, avg_time_loss, avg_xyz_dist, avg_xy_dist, avg_time_err
 
     def test_and_save(self, save_dir="./results"):
         self.model.eval()
@@ -140,7 +146,7 @@ class Trainer:
                 seqs, lengths, masks, labels_xyz, labels_time = [b.to(self.device) for b in batch]
                 best_param = torch.load(self.best_model_path)
                 self.model.load_state_dict(best_param)
-                pred_xyz, pred_time = self.model(seqs, lengths)
+                pred_xyz, pred_time = self.model(seqs, lengths, masks)
 
                 preds.append(torch.cat([pred_xyz, pred_time.unsqueeze(1)], dim=-1).cpu().numpy())
                 labels.append(torch.cat([labels_xyz, labels_time.unsqueeze(1)], dim=-1).cpu().numpy())
@@ -163,9 +169,9 @@ class Trainer:
         })
 
         # 拼接文件名
-        filename = f"{self.model.name}_{self.logger.time}.csv"
-        csv_path = os.path.join(save_dir, filename)
-
-        df.to_csv(csv_path, index=False)
-        self.logger.info(f"📄 Saved test results to {csv_path}")
+        os.makedirs(save_dir, exist_ok=True)
+        filename = f"{self.logger.time}.csv"
+        csv_file = os.path.join(save_dir, filename)
+        df.to_csv(csv_file, index=False)
+        self.logger.info(f"📄 Saved test results to {csv_file}")
         return df

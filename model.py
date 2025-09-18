@@ -30,7 +30,7 @@ class LSTMRegressor(nn.Module):
             nn.Linear(32, 1)
         )
 
-    def forward(self, x, lengths):
+    def forward(self, x, lengths, mask=None):
         # x: (batch, max_len, 63)
         # lengths: (batch,)
         packed = pack_padded_sequence(x, lengths.cpu(), batch_first=True, enforce_sorted=False)
@@ -156,7 +156,7 @@ class ImprovedLSTMRegressor(nn.Module):
             nn.Linear(32, 1)
         )
 
-    def forward(self, x, lengths):
+    def forward(self, x, lengths, mask=None):
         # x: (batch, max_len, num_points*3) -> 需要先转换为(batch, max_len, num_points, 3)
         batch_size, max_len, _ = x.size()
         
@@ -242,39 +242,135 @@ class SimplifiedLSTMRegressor(nn.Module):
             nn.Linear(32, 1)
         )
 
-    def forward(self, x, lengths):
+    # def forward(self, x, lengths, mask=None):
+    #     # x: (batch, max_len, num_points*3)
+    #     batch_size, max_len, _ = x.size()
+        
+    #     # 重塑输入
+    #     x = x.view(batch_size, max_len, self.num_points, 3)  # (batch, max_len, num_points, 3)
+    #     x = x.permute(0, 1, 3, 2)  # (batch, max_len, 3, num_points)
+        
+    #     # 卷积特征提取：批量处理所有时间步（替代循环）
+    #     # 调整维度以便并行处理所有帧：(batch*max_len, 3, num_points)
+    #     x_reshaped = x.reshape(-1, 3, self.num_points)
+    #     conv_feat = self.conv_extractor(x_reshaped)  # (batch*max_len, conv_out_dim, num_points)
+    #     conv_feat = conv_feat.flatten(1)  # (batch*max_len, conv_out_dim*num_points)
+        
+    #     # 恢复时序结构：(batch, max_len, point_feature_dim)
+    #     conv_seq = conv_feat.view(batch_size, max_len, -1)
+        
+    #     # LSTM处理
+    #     packed = pack_padded_sequence(conv_seq, lengths.cpu(), batch_first=True, enforce_sorted=False)
+    #     _, (h_n, _) = self.lstm(packed)  # 只保留最后一个时间步的隐状态
+        
+    #     # 取最后一层的输出
+    #     if self.bidirectional:
+    #         feat = torch.cat([h_n[-2], h_n[-1]], dim=1)  # 双向时拼接正反方向
+    #     else:
+    #         feat = h_n[-1]  # 单向时直接取最后一层
+        
+    #     # 预测输出
+    #     pred_xyz = self.fc_xyz(feat)
+    #     pred_time = self.fc_time(feat).squeeze(1)
+        
+    #     return pred_xyz, pred_time
+    
+    def forward(self, x, lengths, mask):
         # x: (batch, max_len, num_points*3)
         batch_size, max_len, _ = x.size()
         
-        # 重塑输入
+        # 1. 卷积特征提取（保持不变）
         x = x.view(batch_size, max_len, self.num_points, 3)  # (batch, max_len, num_points, 3)
         x = x.permute(0, 1, 3, 2)  # (batch, max_len, 3, num_points)
-        
-        # 卷积特征提取：批量处理所有时间步（替代循环）
-        # 调整维度以便并行处理所有帧：(batch*max_len, 3, num_points)
-        x_reshaped = x.reshape(-1, 3, self.num_points)
+        x_reshaped = x.reshape(-1, 3, self.num_points)  # (batch*max_len, 3, num_points)
         conv_feat = self.conv_extractor(x_reshaped)  # (batch*max_len, conv_out_dim, num_points)
         conv_feat = conv_feat.flatten(1)  # (batch*max_len, conv_out_dim*num_points)
+        conv_seq = conv_feat.view(batch_size, max_len, -1)  # (batch, max_len, point_feature_dim)
         
-        # 恢复时序结构：(batch, max_len, point_feature_dim)
-        conv_seq = conv_feat.view(batch_size, max_len, -1)
+        # 2. 应用mask：将填充位置的特征置为0（关键步骤1）
+        # mask形状: (batch, max_len) -> 扩展为 (batch, max_len, 1) 与特征维度匹配
+        conv_seq = conv_seq * mask.unsqueeze(-1).float()
         
-        # LSTM处理
-        packed = pack_padded_sequence(conv_seq, lengths.cpu(), batch_first=True, enforce_sorted=False)
-        _, (h_n, _) = self.lstm(packed)  # 只保留最后一个时间步的隐状态
+        # 3. LSTM直接处理整个填充后的序列（不使用pack_padded_sequence）
+        lstm_out, (h_n, c_n) = self.lstm(conv_seq)  # lstm_out: (batch, max_len, hidden_dim*direction)
         
-        # 取最后一层的输出
-        if self.bidirectional:
-            feat = torch.cat([h_n[-2], h_n[-1]], dim=1)  # 双向时拼接正反方向
-        else:
-            feat = h_n[-1]  # 单向时直接取最后一层
+        # 4. 提取每个序列的真实最后一个有效时间步的输出（关键步骤2）
+        # 生成索引: 每个样本的最后有效位置 = lengths - 1
+        last_indices = (lengths - 1).unsqueeze(1).unsqueeze(1)  # (batch, 1, 1)
+        # 扩展索引维度以匹配lstm_out: (batch, 1, hidden_dim*direction)
+        last_indices = last_indices.expand(-1, -1, lstm_out.size(-1))
+        # 按索引取最后一个有效时间步的输出
+        final_feat = torch.gather(lstm_out, dim=1, index=last_indices).squeeze(1)  # (batch, hidden_dim*direction)
         
-        # 预测输出
-        pred_xyz = self.fc_xyz(feat)
-        pred_time = self.fc_time(feat).squeeze(1)
+        # 5. 预测输出
+        pred_xyz = self.fc_xyz(final_feat)
+        pred_time = self.fc_time(final_feat).squeeze(1)
         
         return pred_xyz, pred_time
-    
+
+class TransformerModel(nn.Module):
+    def __init__(self, seq_len=50, num_points=21, d_model=256, nhead=8, num_layers=4, point_dim=3):
+        super().__init__()
+        self.name = 'TransformerModel'
+        self.num_points = num_points
+        self.special_indices = [i for i in range(17*3, 21*3)]
+        self.input_dim = num_points * point_dim
+        self.special_input_dim = len(self.special_indices)
+        self.d_model = d_model
+
+        # 全部点的输入映射
+        self.input_fc_main = nn.Linear(self.input_dim, d_model)
+        # 特殊点的输入映射
+        self.input_fc_special = nn.Linear(self.special_input_dim, d_model)
+
+        # 主Transformer编码器
+        encoder_layer_main = nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead, batch_first=True)
+        self.transformer_main = nn.TransformerEncoder(encoder_layer_main, num_layers=num_layers)
+
+        # 特殊点Transformer编码器
+        encoder_layer_special = nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead, batch_first=True)
+        self.transformer_special = nn.TransformerEncoder(encoder_layer_special, num_layers=num_layers)
+
+        # 融合后的 MLP
+        self.fusion_mlp = nn.Sequential(
+            nn.Linear(d_model * 2, d_model),
+            nn.ReLU(),
+            nn.Linear(d_model, point_dim)
+        )
+
+        self.time_mlp = nn.Sequential(  # 新增 time_consuming 分支
+            nn.Linear(d_model * 2, d_model),
+            nn.ReLU(),
+            nn.Linear(d_model, 1)  # 输出标量
+        )
+
+    def forward(self, x, lengths, mask):
+        B, T, _ = x.shape
+
+        # --- 主分支 ---
+        x_main = x
+        x_main_proj = self.input_fc_main(x_main)  # (B, T, d_model)
+        x_main_res = x_main_proj.clone()
+        # print(x_main_proj, mask)
+        out_main = self.transformer_main(x_main_proj, src_key_padding_mask=~mask)
+        out_main = out_main + x_main_res
+        final_feat_main = out_main[:, -1, :]  # (B, d_model)
+
+        # --- 特殊点分支 ---
+        special_x = x[:, :, self.special_indices]  # (B, T, )
+        special_proj = self.input_fc_special(special_x)  # (B, T, d_model)
+        special_res = special_proj.clone()
+        out_special = self.transformer_special(special_proj, src_key_padding_mask=~mask)
+        out_special = out_special + special_res
+        final_feat_special = out_special[:, -1, :]  # (B, d_model)
+
+        # --- 融合 ---
+        fused = torch.cat([final_feat_main, final_feat_special], dim=1)  # (B, 2*d_model)
+        output = self.fusion_mlp(fused)  # (B, 2)
+        output_time = self.time_mlp(fused).squeeze(1)  # (B,)
+
+        return output, output_time
+
 if __name__ == "__main__":
     from dataset import load_all_samples, BadmintonDataset, collate_fn_dynamic
 
