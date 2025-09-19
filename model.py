@@ -308,6 +308,84 @@ class SimplifiedLSTMRegressor(nn.Module):
         
         return pred_xyz, pred_time
 
+
+class RNNRegressor(nn.Module):
+    def __init__(self, num_points=21, input_dim=3, conv_dims=[32, 64],
+                 hidden_dim=64, num_layers=1, bidirectional=False,
+                 drop=0.3):
+        super().__init__()
+        self.name = 'RNNRegressor'
+        self.num_points = num_points
+        self.bidirectional = bidirectional
+
+        # 简化卷积特征提取（保持不变）
+        conv_layers = []
+        in_channels = input_dim
+        for out_channels in conv_dims:
+            conv_layers.append(nn.Conv1d(in_channels, out_channels, kernel_size=3, padding=1))
+            conv_layers.append(nn.ReLU())
+            in_channels = out_channels
+
+        self.conv_extractor = nn.Sequential(*conv_layers)
+        self.conv_out_dim = conv_dims[-1]
+        self.point_feature_dim = self.conv_out_dim * num_points
+
+        # 核心更改: 从 nn.LSTM 替换为 nn.RNN
+        self.rnn = nn.RNN(
+            input_size=self.point_feature_dim,
+            hidden_size=hidden_dim,
+            num_layers=num_layers,
+            batch_first=True,
+            bidirectional=bidirectional,
+            dropout=drop if num_layers > 1 else 0.0
+        )
+
+        # 全连接层（保持不变）
+        rnn_out_dim = hidden_dim * (2 if bidirectional else 1)
+        self.fc_xyz = nn.Sequential(
+            nn.Linear(rnn_out_dim, 64),
+            nn.ReLU(),
+            nn.Dropout(drop),
+            nn.Linear(64, 3)
+        )
+        self.fc_time = nn.Sequential(
+            nn.Linear(rnn_out_dim, 32),
+            nn.ReLU(),
+            nn.Dropout(drop),
+            nn.Linear(32, 1)
+        )
+
+    def forward(self, x, lengths, mask):
+        batch_size, max_len, _ = x.size()
+
+        # 1. 卷积特征提取（保持不变）
+        x = x.view(batch_size, max_len, self.num_points, 3)
+        x = x.permute(0, 1, 3, 2)
+        x_reshaped = x.reshape(-1, 3, self.num_points)
+        conv_feat = self.conv_extractor(x_reshaped)
+        conv_feat = conv_feat.flatten(1)
+        conv_seq = conv_feat.view(batch_size, max_len, -1)
+
+        # 2. 应用mask：将填充位置的特征置为0（保持不变）
+        conv_seq = conv_seq * mask.unsqueeze(-1).float()
+
+        # 3. RNN直接处理整个填充后的序列
+        # 注意: RNN的输出格式与LSTM略有不同，它不返回c_n
+        # RNN的输出只有: output, h_n
+        rnn_out, h_n = self.rnn(conv_seq) # 核心更改：移除c_n
+
+        # 4. 提取每个序列的真实最后一个有效时间步的输出（保持不变）
+        last_indices = (lengths - 1).unsqueeze(1).unsqueeze(1)
+        last_indices = last_indices.expand(-1, -1, rnn_out.size(-1))
+        final_feat = torch.gather(rnn_out, dim=1, index=last_indices).squeeze(1)
+
+        # 5. 预测输出（保持不变）
+        pred_xyz = self.fc_xyz(final_feat)
+        pred_time = self.fc_time(final_feat).squeeze(1)
+
+        return pred_xyz, pred_time
+
+
 class TransformerModel(nn.Module):
     def __init__(self, seq_len=50, num_points=21, d_model=256, nhead=8, num_layers=4, point_dim=3):
         super().__init__()

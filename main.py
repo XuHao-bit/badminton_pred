@@ -64,6 +64,7 @@ def main():
     args = parser.parse_args()
 
     # 定义模型
+    # model = RNNRegressor()
     # model = LSTMRegressor()
     # model = ImprovedLSTMRegressor()
     # model = SimplifiedLSTMRegressor()
