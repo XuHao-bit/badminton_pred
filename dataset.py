@@ -262,9 +262,7 @@ class BadmintonDataset(Dataset):
         else:
             # 测试时：从结尾取固定长度（或保持原始逻辑）
             total_len = len(total_frames)
-            seq_len = np.random.randint(self.min_len, self.max_len + 1)
-            if seq_len > total_len:
-                seq_len = total_len
+            seq_len = self.max_len
             start_idx = total_len - seq_len  # 从结尾取
             end_idx = total_len - 1
 

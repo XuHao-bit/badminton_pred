@@ -78,7 +78,6 @@ class Trainer:
 
                 loss.backward()
                 self.optimizer.step()
-
                 train_loss += loss.item()
 
             avg_loss = train_loss / len(self.train_loader)
