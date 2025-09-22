@@ -211,13 +211,15 @@ class BadmintonDataset(Dataset):
                  mode: str = "train",
                  num_subsamples: int = 5, # not use
                  feature_mean=None, feature_std=None,
-                 label_mean=None, label_std=None):
+                 label_mean=None, label_std=None,
+                 aug_method=None):
         super().__init__()
         assert len(samples) > 0
         self.samples = samples
         self.min_len = min_len
         self.max_len = max_len
         self.mode = mode
+        self.aug_method = aug_method
 
 
         if mode == "train":
@@ -272,6 +274,45 @@ class BadmintonDataset(Dataset):
         length = seq.shape[0]
         label_xyz_raw = torch.tensor(s["label_xyz"], dtype=torch.float32)  # 原始XY轴标签（物理空间）
         label_time_raw = torch.tensor(drop_frame - frame_ids[-1], dtype=torch.float32)  # 时间标签（暂不加噪声）
+
+        # 数据增强
+        seq = seq.view(length, -1, 3)
+        if self.mode == 'train' and random.random() > 0.5:
+            if self.aug_method == '平移':
+                # 在归一化后的数据上进行平移
+                dx = random.uniform(-20, 20)
+                dy = random.uniform(-20, 20)
+                translation = torch.tensor([dx, dy, 0.0], dtype=torch.float32)
+                # 对整个序列和落点进行平移
+                seq = seq + translation
+                if label_xyz_raw is not None:
+                    label_xyz_raw = label_xyz_raw + translation
+            elif self.aug_method == '旋转':
+                # 旋转逻辑
+                angle = random.uniform(-5, 5) * np.pi / 180.0
+                cos_a, sin_a = np.cos(angle), np.sin(angle)
+
+                # 使用一个嵌套函数来处理旋转
+                def rotate_points(points):
+                    x_old, y_old = points[..., 0], points[..., 1]
+                    x_new = cos_a * x_old - sin_a * y_old
+                    y_new = sin_a * x_old + cos_a * y_old
+                    rotated = torch.stack([x_new, y_new, points[..., 2]], dim=-1)
+                    return rotated
+
+                seq = rotate_points(seq)
+                if label_xyz_raw is not None:
+                    label_xyz_raw = rotate_points(label_xyz_raw)
+            elif self.aug_method == '缩放':
+                scale = random.uniform(0.98, 1.02)
+                seq = seq * scale
+                # 落点也需要同步缩放
+                if label_xyz_raw is not None:
+                    label_xyz_raw = label_xyz_raw * scale
+            elif self.aug_method == '噪声':
+                noise = torch.randn_like(seq) * 10
+                seq = seq + noise
+        seq = seq.view(length, -1)
 
         # 归一化
         seq = (seq - torch.from_numpy(self.feature_mean).float()) / torch.from_numpy(self.feature_std).float()
