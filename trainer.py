@@ -65,10 +65,10 @@ class Trainer:
             train_loss = 0.0
             # xyz_alpha = (5 - epoch*0.5//10) if epoch <= 30 else 2
             for batch in tqdm(self.train_loader, desc=f"Epoch {epoch+1}/{num_epochs}"):
-                seqs, lengths, masks, labels_xyz, labels_time = [b.to(self.device) for b in batch]
+                seqs, lengths, masks, labels_xyz, labels_time = [b.to(self.device) for b in batch[:-1]]
 
                 self.optimizer.zero_grad()
-                pred_xyz, pred_time = self.model(seqs, lengths, masks)
+                pred_xyz, pred_time = self.model(seqs, masks)
 
                 # loss_xyz = self.cal_xyz_loss(pred_xyz, labels_xyz)
                 loss_xyz = self.criterion(pred_xyz, labels_xyz)
@@ -96,6 +96,21 @@ class Trainer:
                 best_xyz_err = avg_xyz_err
                 best_time_err = avg_time_err
                 torch.save(self.model.state_dict(), self.best_model_path)
+
+                # save model as onnx
+                self.model.to('cpu')
+                dummy_seq = torch.randn(1, 50, 63)
+                dummy_mask = torch.ones(1, 50, dtype=torch.bool)
+                torch.onnx.export(
+                    self.model,
+                    (dummy_seq, dummy_mask),
+                    self.best_model_path.replace('.pt', '.onnx'),
+                    input_names=['seq', 'mask'],
+                    output_names=['output'],
+                    dynamic_axes={"seq": {0: "batch_size", 1: "seq_len", 2: "feature_dim"}, "mask": {0: "batch_size", 1: "seq_len"}}
+                )
+                self.model.to(self.device)
+
                 self.logger.info(f"✅ Saved best model to {self.best_model_path}")
 
         self.logger.info(f"Training finished. Best epoch: {best_epoch}|\tBest [Valid] loss: {best_loss:.4f}|\tXYZ Err: {best_xyz_err:.4f}|\tTime Err: {best_time_err:.4f}")
@@ -109,8 +124,8 @@ class Trainer:
 
         with torch.no_grad():
             for batch in self.test_loader:
-                seqs, lengths, masks, labels_xyz, labels_time = [b.to(self.device) for b in batch]
-                pred_xyz, pred_time = self.model(seqs, lengths, masks)
+                seqs, lengths, masks, labels_xyz, labels_time = [b.to(self.device) for b in batch[:-1]]
+                pred_xyz, pred_time = self.model(seqs, masks)
 
                 loss_xyz = self.criterion(pred_xyz, labels_xyz)
                 loss_time = self.criterion(pred_time, labels_time)
@@ -137,22 +152,25 @@ class Trainer:
 
     def test_and_save(self, save_dir="./results"):
         self.model.eval()
-        preds, labels = [], []
+        preds, labels, filenames = [], [], []
 
         label_mean = self.test_loader.dataset.label_mean
         label_std = self.test_loader.dataset.label_std
         with torch.no_grad():
             for batch in self.test_loader:
-                seqs, lengths, masks, labels_xyz, labels_time = [b.to(self.device) for b in batch]
+                seqs, lengths, masks, labels_xyz, labels_time = [b.to(self.device) for b in batch[:-1]]
+                fn = batch[-1]
                 best_param = torch.load(self.best_model_path)
                 self.model.load_state_dict(best_param)
-                pred_xyz, pred_time = self.model(seqs, lengths, masks)
+                pred_xyz, pred_time = self.model(seqs, masks)
 
                 preds.append(torch.cat([pred_xyz, pred_time.unsqueeze(1)], dim=-1).cpu().numpy())
                 labels.append(torch.cat([labels_xyz, labels_time.unsqueeze(1)], dim=-1).cpu().numpy())
+                filenames.append(fn)
 
         preds = np.concatenate(preds, axis=0)
         labels = np.concatenate(labels, axis=0)
+        filenames = [fn for fnames in filenames for fn in fnames]
         # ===== 反归一化 =====
         preds = preds * label_std + label_mean
         labels = labels * label_std + label_mean
@@ -166,6 +184,7 @@ class Trainer:
             "label_y": labels[:, 1],
             "label_z": labels[:, 2],
             "label_time": labels[:, 3],
+            "file_name": filenames,
         })
 
         # 拼接文件名

@@ -45,6 +45,7 @@ def parse_sample_file(file_path: str) -> Dict:
         frames.append(coords)
 
     return {
+        'file_name': os.path.basename(file_path),
         'frames': np.stack(frames, axis=0),
         'frame_ids': np.array(frame_ids, dtype=np.int32),
         'drop_frame': drop_frame,
@@ -80,7 +81,7 @@ def collate_fn_dynamic(batch):
         times: (B,)
         mask: (B, max_len)
     """
-    seqs, lengths, xyzs, times = zip(*batch)
+    seqs, lengths, xyzs, times, filename = zip(*batch)
     lengths = torch.tensor(lengths, dtype=torch.long)
     feature_dim = seqs[0].shape[1]
     max_len = max(lengths)
@@ -106,7 +107,7 @@ def collate_fn_dynamic(batch):
     xyzs = torch.stack(xyzs, dim=0)                # (B,3)
     times = torch.stack(times, dim=0)              # (B,)
 
-    return seqs_padded, lengths, masks, xyzs, times
+    return seqs_padded, lengths, masks, xyzs, times, filename
 
 def resampling(samples: List[Dict],
                 num_subsamples: int = 5,
@@ -164,6 +165,7 @@ def resampling_v2(samples: List[Dict],
         total_len = len(s["frames"])
         for k in range(num_subsamples):
             sub_sample = {
+                'file_name': s["file_name"],
                 "frames": s["frames"],
                 "frame_ids": s["frame_ids"],
                 "drop_frame": s["drop_frame"],
@@ -248,6 +250,7 @@ class BadmintonDataset(Dataset):
 
     def __getitem__(self, idx):
         s = self.samples[idx]
+        file_name = s["file_name"]
         total_frames = s["frames"]
         total_frame_ids = s["frame_ids"]
         drop_frame = s["drop_frame"]
@@ -333,7 +336,7 @@ class BadmintonDataset(Dataset):
         label_xyz_norm = label_all[:3]
         label_time_norm = label_all[3]
 
-        return seq, torch.tensor(length, dtype=torch.long), label_xyz_norm, label_time_norm
+        return seq, torch.tensor(length, dtype=torch.long), label_xyz_norm, label_time_norm, file_name
     
     def get_norm_stats(self):
         return self.feature_mean, self.feature_std, self.label_mean, self.label_std
