@@ -27,8 +27,8 @@ class Trainer:
         self.logger.info(f"Using device: {self.device}")
 
         self.model = model.to(self.device)
-        self.train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn_dynamic)
-        self.test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn_dynamic)
+        self.train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn_dynamic, num_workers=0)
+        self.test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn_dynamic, num_workers=0)
 
         # self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr, weight_decay=1e-5)
@@ -58,7 +58,7 @@ class Trainer:
         # return self.criterion(pred_xyz, labels_xyz)
 
     def train(self, num_epochs=50):
-        best_loss, best_xyz_err, best_time_err = float("inf"), 0, 0
+        best_epoch, best_loss, best_xyz_err, best_time_err = 0, float("inf"), 0, 0
 
         for epoch in range(num_epochs):
             self.model.train()
@@ -72,8 +72,8 @@ class Trainer:
 
                 # loss_xyz = self.cal_xyz_loss(pred_xyz, labels_xyz)
                 loss_xyz = self.criterion(pred_xyz, labels_xyz)
-                # loss_time = self.criterion(pred_time, labels_time)
-                loss_time = self.l1_criterion(pred_time, labels_time)
+                loss_time = self.criterion(pred_time, labels_time)
+                # loss_time = self.l1_criterion(pred_time, labels_time)
                 loss = loss_xyz + self.lambda_time * loss_time
 
                 loss.backward()
@@ -91,13 +91,14 @@ class Trainer:
 
             # save best model
             if avg_xyz_loss + self.lambda_time * avg_time_loss < best_loss:
+                best_epoch = epoch
                 best_loss = avg_xyz_loss + self.lambda_time * avg_time_loss
                 best_xyz_err = avg_xyz_err
                 best_time_err = avg_time_err
                 torch.save(self.model.state_dict(), self.best_model_path)
                 self.logger.info(f"✅ Saved best model to {self.best_model_path}")
 
-        self.logger.info(f"Training finished. Best [Valid] loss: {best_loss:.4f}|\tXYZ Err: {best_xyz_err:.4f}|\tTime Err: {best_time_err:.4f}")
+        self.logger.info(f"Training finished. Best epoch: {best_epoch}|\tBest [Valid] loss: {best_loss:.4f}|\tXYZ Err: {best_xyz_err:.4f}|\tTime Err: {best_time_err:.4f}")
 
     def evaluate(self):
         self.model.eval()

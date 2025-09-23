@@ -14,7 +14,6 @@ from datetime import datetime
 
 
 def set_seed(seed=42):
-    import os
     os.environ['PYTHONHASHSEED'] = str(seed)
     random.seed(seed)
     np.random.seed(seed)
@@ -49,8 +48,8 @@ def main():
     # parser.add_argument('--data_folder', type=str, default='/home/zhaoxuhao/badminton_xh/20250809_Seq_data_v2/20250809_Seq_data')
     parser.add_argument('--data_folder', type=str, default='/home/zhaoxuhao/badminton_xh/20250809_Seq_data_v3')
     parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--epochs", type=int, default=50)
+    parser.add_argument("--lr", type=float, default=5e-5)
+    parser.add_argument("--epochs", type=int, default=100)
     # parser.add_argument("--hidden_dim", type=int, default=128)
     # parser.add_argument("--num_layers", type=int, default=2)
     # parser.add_argument("--bidirectional", action="store_true", default=True)
@@ -61,10 +60,11 @@ def main():
     parser.add_argument("--num_subsamples", type=int, default=5)
     parser.add_argument("--delta", type=float, default=1.0) # for huber loss (xyz loss)
     parser.add_argument("--lambda_time", type=float, default=0.1) # for huber loss (xyz loss)
-    parser.add_argument("--aug_method", type=str, default='旋转') # 可选：None, '平移', '旋转', '缩放', '噪声'
+    parser.add_argument("--aug_method", type=str, default='None') # 可选：None, '平移', '旋转', '缩放', '噪声'
     args = parser.parse_args()
 
     # 定义模型
+    set_seed()
     # model = RNNRegressor()
     # model = LSTMRegressor()
     # model = ImprovedLSTMRegressor()
