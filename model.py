@@ -193,7 +193,7 @@ class ImprovedLSTMRegressor(nn.Module):
 
 class SimplifiedLSTMRegressor(nn.Module):
     def __init__(self, num_points=21, input_dim=3, conv_dims=[32, 64],  # 减少卷积维度
-                 hidden_dim=64, num_layers=1, bidirectional=False,  # 简化LSTM
+                 hidden_dim=128, num_layers=5, bidirectional=False,  # 简化LSTM
                  drop=0.3):  # 降低dropout率
         super().__init__()
         self.name = 'SimplifiedLSTMRegressor'
@@ -275,9 +275,10 @@ class SimplifiedLSTMRegressor(nn.Module):
         
     #     return pred_xyz, pred_time
     
-    def forward(self, x, lengths, mask):
+    def forward(self, x, mask):
         # x: (batch, max_len, num_points*3)
         batch_size, max_len, _ = x.size()
+        lengths = torch.sum(mask, dim=1)
         
         # 1. 卷积特征提取（保持不变）
         x = x.view(batch_size, max_len, self.num_points, 3)  # (batch, max_len, num_points, 3)
@@ -311,7 +312,7 @@ class SimplifiedLSTMRegressor(nn.Module):
 
 class RNNRegressor(nn.Module):
     def __init__(self, num_points=21, input_dim=3, conv_dims=[32, 64],
-                 hidden_dim=64, num_layers=1, bidirectional=False,
+                 hidden_dim=128, num_layers=5, bidirectional=False,
                  drop=0.3):
         super().__init__()
         self.name = 'RNNRegressor'
@@ -355,8 +356,9 @@ class RNNRegressor(nn.Module):
             nn.Linear(32, 1)
         )
 
-    def forward(self, x, lengths, mask):
+    def forward(self, x, mask):
         batch_size, max_len, _ = x.size()
+        lengths = torch.sum(mask, dim=1)
 
         # 1. 卷积特征提取（保持不变）
         x = x.view(batch_size, max_len, self.num_points, 3)
@@ -387,7 +389,7 @@ class RNNRegressor(nn.Module):
 
 
 class TransformerModel(nn.Module):
-    def __init__(self, seq_len=50, num_points=21, d_model=256, nhead=8, num_layers=4, point_dim=3):
+    def __init__(self, seq_len=50, num_points=21, d_model=256, nhead=8, num_layers=6, point_dim=3):
         super().__init__()
         self.name = 'TransformerModel'
         self.num_points = num_points
@@ -422,7 +424,7 @@ class TransformerModel(nn.Module):
             nn.Linear(d_model, 1)  # 输出标量
         )
 
-    def forward(self, x, lengths, mask):
+    def forward(self, x, mask):
         B, T, _ = x.shape
 
         # --- 主分支 ---

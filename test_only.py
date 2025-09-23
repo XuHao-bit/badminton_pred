@@ -77,7 +77,7 @@ def main():
 
     train_dataset = BadmintonDataset(train_samples, mode="train", min_len=args.min_len, max_len=args.max_len, num_subsamples=args.num_subsamples)
     feat_mean, feat_std, label_mean, label_std = train_dataset.get_norm_stats()
-    test_dataset = BadmintonDataset(test_samples, mode="test", min_len=args.40, max_len=args.max_len,
+    test_dataset = BadmintonDataset(test_samples, mode="test", min_len=args.min_len, max_len=args.max_len,
                                feature_mean=feat_mean, feature_std=feat_std,
                                label_mean=label_mean, label_std=label_std)
     # 4. 打印

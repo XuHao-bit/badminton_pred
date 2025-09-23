@@ -63,6 +63,7 @@ def visual_df(name, log_time, df):
     # 计算每个样本的欧氏距离误差（三维空间中两点间的直线距离）
     df['euclidean_error'] = np.sqrt(df['err_x']**2 + df['err_y']** 2 + df['err_z']**2)
     avg_euclidean_err, mid_eu_err = df['euclidean_error'].mean(), df['euclidean_error'].median()
+    df_sorted = df.sort_values(by='euclidean_error')
 
     print("误差统计结果：")
     print(avg_euclidean_err, mid_eu_err)
@@ -82,6 +83,12 @@ def visual_df(name, log_time, df):
     # 可视化两组数据
     visualize_group(group_high, "Above_Avg_Err", log_time, avg_euclidean_err, save_path)
     visualize_group(group_low, "Below_Avg_Err", log_time, avg_euclidean_err, save_path)
+
+    print("预测精度最好的10个序列：")
+    print(df_sorted.head(10)[['file_name', 'euclidean_error']].to_string(index=False))
+
+    print("预测精度最差的10个序列：")
+    print(df_sorted.tail(10)[['file_name', 'euclidean_error']].to_string(index=False))
 
     # # 提取预测和真实的 xy
     # pred_xy = df[["pred_x", "pred_y"]].values
