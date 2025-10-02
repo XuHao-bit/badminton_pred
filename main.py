@@ -60,6 +60,7 @@ def main():
     parser.add_argument("--num_subsamples", type=int, default=5)
     parser.add_argument("--delta", type=float, default=1.0) # for huber loss (xyz loss)
     parser.add_argument("--lambda_time", type=float, default=0.1) # for huber loss (xyz loss)
+    parser.add_argument("--lambda_direction", type=float, default=0.1)  # for huber loss (xyz loss)
     parser.add_argument("--aug_method", type=str, default='None') # 可选：None, '平移', '旋转', '缩放', '噪声'
     args = parser.parse_args()
 
@@ -103,7 +104,8 @@ def main():
                                label_mean=label_mean, label_std=label_std)
     # 4. 打印
     logger.info("========== Training Data 统计信息 ==========")
-    logger.info(f"样本数量: {len(train_dataset)}")
+    logger.info(f"训练样本数量: {len(train_dataset)}")
+    logger.info(f"测试样本数量: {len(test_dataset)}")
     logger.info(f"特征 mean: {feat_mean.shape}, 示例前5个维度: {feat_mean[0, :5]}")
     logger.info(f"特征 std : {feat_std.shape}, 示例前5个维度: {feat_std[0, :5]}")
 
