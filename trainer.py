@@ -23,6 +23,7 @@ class Trainer:
         self.logger = logger
         self.args = args
         self.lambda_time = args.lambda_time
+        self.lambda_direction = args.lambda_direction
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.logger.info(f"Using device: {self.device}")
 
@@ -33,6 +34,7 @@ class Trainer:
         # self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr, weight_decay=1e-5)
         self.criterion = torch.nn.MSELoss()
+        self.criterion_cos = torch.nn.CosineEmbeddingLoss()
         self.l1_criterion = torch.nn.L1Loss()
 
         self.save_dir = save_dir
@@ -58,23 +60,26 @@ class Trainer:
         # return self.criterion(pred_xyz, labels_xyz)
 
     def train(self, num_epochs=50):
-        best_epoch, best_loss, best_xyz_err, best_time_err = 0, float("inf"), 0, 0
+        best_epoch, best_loss, best_xyz_err, best_time_err, best_direction_err = 0, float("inf"), 0, 0, 0
 
         for epoch in range(num_epochs):
             self.model.train()
             train_loss = 0.0
             # xyz_alpha = (5 - epoch*0.5//10) if epoch <= 30 else 2
             for batch in tqdm(self.train_loader, desc=f"Epoch {epoch+1}/{num_epochs}"):
-                seqs, lengths, masks, labels_xyz, labels_time = [b.to(self.device) for b in batch[:-1]]
+                seqs, lengths, masks, labels_xyz, labels_time, labels_direction = [b.to(self.device) for b in batch[:-1]]
 
                 self.optimizer.zero_grad()
-                pred_xyz, pred_time = self.model(seqs, masks)
+                pred_xyz, pred_time, pred_direction = self.model(seqs, masks)
 
                 # loss_xyz = self.cal_xyz_loss(pred_xyz, labels_xyz)
                 loss_xyz = self.criterion(pred_xyz, labels_xyz)
                 loss_time = self.criterion(pred_time, labels_time)
                 # loss_time = self.l1_criterion(pred_time, labels_time)
-                loss = loss_xyz + self.lambda_time * loss_time
+                # 使用 CosineEmbeddingLoss：需要 targets = 1 表示“方向相同”
+                targets = torch.ones(labels_direction.size(0), device=self.device)
+                loss_direction = self.criterion_cos(pred_direction, labels_direction, targets)
+                loss = loss_xyz + self.lambda_time * loss_time + self.lambda_direction * loss_direction
 
                 loss.backward()
                 self.optimizer.step()
@@ -84,9 +89,9 @@ class Trainer:
             res_str = f"Epoch {epoch+1}: [Train] Loss = {avg_loss:.4f}|"
 
             # validation
-            avg_xyz_loss, avg_time_loss, avg_xyz_err, avg_xy_err, avg_time_err = self.evaluate()
-            res_str += f"\t[Valid] Loss = {avg_xyz_loss+self.lambda_time*avg_time_loss:.4f}(XYZ:{avg_xyz_loss:.2f}; Time:{avg_time_loss:.2f})|"
-            res_str += f"\tXYZ Err(L2 Distance): {avg_xyz_err:.4f}|\tXY Err: {avg_xy_err:.4f}|\tTime Err: {avg_time_err:.4f}"
+            avg_xyz_loss, avg_time_loss, avg_dir_loss, avg_xyz_err, avg_xy_err, avg_time_err, avg_direction_err = self.evaluate()
+            res_str += f"\t[Valid] XYZ Loss = {avg_xyz_loss:.4f}| Time Loss = {avg_time_loss:.4f}| Dir Loss = {avg_dir_loss:.4f}|"
+            res_str += f"\tXYZ Err(L2 Distance): {avg_xyz_err:.4f}|\tXY Err: {avg_xy_err:.4f}|\tTime Err: {avg_time_err:.4f}|\tDirection Err: {avg_direction_err:.4f}"
             self.logger.info(res_str)
 
             # save best model
@@ -95,6 +100,7 @@ class Trainer:
                 best_loss = avg_xyz_loss + self.lambda_time * avg_time_loss
                 best_xyz_err = avg_xyz_err
                 best_time_err = avg_time_err
+                best_direction_err = avg_direction_err
                 torch.save(self.model.state_dict(), self.best_model_path)
 
                 # save model as onnx
@@ -113,29 +119,40 @@ class Trainer:
 
                 self.logger.info(f"✅ Saved best model to {self.best_model_path}")
 
-        self.logger.info(f"Training finished. Best epoch: {best_epoch}|\tBest [Valid] loss: {best_loss:.4f}|\tXYZ Err: {best_xyz_err:.4f}|\tTime Err: {best_time_err:.4f}")
+        self.logger.info(f"Training finished. Best epoch: {best_epoch}|\tBest [Valid] loss: {best_loss:.4f}|\tXYZ Err: {best_xyz_err:.4f}|\tTime Err: {best_time_err:.4f}|\tDir Err: {best_direction_err:.2f}")
 
     def evaluate(self):
         self.model.eval()
-        xyz_loss, time_loss = 0.0, 0.0
+        xyz_loss, time_loss, dir_loss = 0.0, 0.0, 0.0
         preds, labels = [], []
+        dir_preds, dir_labels = [], []
         label_mean = self.test_loader.dataset.label_mean
         label_std = self.test_loader.dataset.label_std
 
         with torch.no_grad():
             for batch in self.test_loader:
-                seqs, lengths, masks, labels_xyz, labels_time = [b.to(self.device) for b in batch[:-1]]
-                pred_xyz, pred_time = self.model(seqs, masks)
+                seqs, lengths, masks, labels_xyz, labels_time, labels_direction = [b.to(self.device) for b in batch[:-1]]
+                pred_xyz, pred_time, pred_direction = self.model(seqs, masks)
 
                 loss_xyz = self.criterion(pred_xyz, labels_xyz)
                 loss_time = self.criterion(pred_time, labels_time)
+                targets = torch.ones(labels_direction.size(0), device=self.device)
+                loss_dir = self.criterion_cos(pred_direction, labels_direction, targets)
+
                 xyz_loss += loss_xyz.item()
                 time_loss += loss_time.item()
+                dir_loss += loss_dir.item()
+
                 preds.append(torch.cat([pred_xyz, pred_time.unsqueeze(1)], dim=-1).cpu().numpy())
                 labels.append(torch.cat([labels_xyz, labels_time.unsqueeze(1)], dim=-1).cpu().numpy())
+                dir_preds.append(pred_direction.cpu().numpy())
+                dir_labels.append(labels_direction.cpu().numpy())
+
 
         preds = np.concatenate(preds, axis=0)
         labels = np.concatenate(labels, axis=0)
+        dir_preds = np.concatenate(dir_preds, axis=0)
+        dir_labels = np.concatenate(dir_labels, axis=0)
         # ===== 反归一化 =====
         preds = preds * label_std + label_mean
         labels = labels * label_std + label_mean
@@ -144,11 +161,19 @@ class Trainer:
 
         avg_xyz_loss = xyz_loss / len(self.test_loader)
         avg_time_loss = time_loss / len(self.test_loader)
+        avg_dir_loss = dir_loss / len(self.test_loader)
         avg_xyz_dist = np.mean(np.linalg.norm(xyz_preds - xyz_labels, axis=1))
         avg_xy_dist = np.mean(np.linalg.norm(xyz_preds[:, :2] - xyz_labels[:, :2], axis=1))
         avg_time_err = np.mean(np.abs(time_preds - time_labels))
 
-        return avg_xyz_loss, avg_time_loss, avg_xyz_dist, avg_xy_dist, avg_time_err
+        # === 方向误差（角度，单位：度） ===
+        cos_sim = np.sum(dir_preds * dir_labels, axis=1) / (
+                np.linalg.norm(dir_preds, axis=1) * np.linalg.norm(dir_labels, axis=1)
+        )
+        cos_sim = np.clip(cos_sim, -1.0, 1.0)  # 避免数值超出 [-1,1]
+        avg_direction_err = np.mean(np.degrees(np.arccos(cos_sim)))
+
+        return avg_xyz_loss, avg_time_loss, avg_dir_loss, avg_xyz_dist, avg_xy_dist, avg_time_err, avg_direction_err
 
     def test_and_save(self, save_dir="./results"):
         self.model.eval()
@@ -158,32 +183,40 @@ class Trainer:
         label_std = self.test_loader.dataset.label_std
         with torch.no_grad():
             for batch in self.test_loader:
-                seqs, lengths, masks, labels_xyz, labels_time = [b.to(self.device) for b in batch[:-1]]
+                seqs, lengths, masks, labels_xyz, labels_time, labels_direction = [b.to(self.device) for b in batch[:-1]]
                 fn = batch[-1]
                 best_param = torch.load(self.best_model_path)
                 self.model.load_state_dict(best_param)
-                pred_xyz, pred_time = self.model(seqs, masks)
+                pred_xyz, pred_time, pred_direction = self.model(seqs, masks)
 
-                preds.append(torch.cat([pred_xyz, pred_time.unsqueeze(1)], dim=-1).cpu().numpy())
-                labels.append(torch.cat([labels_xyz, labels_time.unsqueeze(1)], dim=-1).cpu().numpy())
+                preds.append(torch.cat(
+                    [pred_xyz, pred_time.unsqueeze(1), pred_direction], dim=-1
+                ).cpu().numpy())
+                labels.append(torch.cat(
+                    [labels_xyz, labels_time.unsqueeze(1), labels_direction], dim=-1
+                ).cpu().numpy())
                 filenames.append(fn)
 
         preds = np.concatenate(preds, axis=0)
         labels = np.concatenate(labels, axis=0)
         filenames = [fn for fnames in filenames for fn in fnames]
-        # ===== 反归一化 =====
-        preds = preds * label_std + label_mean
-        labels = labels * label_std + label_mean
+        # ===== 反归一化 (只对 xyz,time 进行，direction 是单位向量不需要归一化) =====
+        preds[:, :4] = preds[:, :4] * label_std + label_mean
+        labels[:, :4] = labels[:, :4] * label_std + label_mean
         
         df = pd.DataFrame({
             "pred_x": preds[:, 0],
             "pred_y": preds[:, 1],
             "pred_z": preds[:, 2],
             "pred_time": preds[:, 3],
+            "pred_dir_x": preds[:, 4],
+            "pred_dir_y": preds[:, 5],
             "label_x": labels[:, 0],
             "label_y": labels[:, 1],
             "label_z": labels[:, 2],
             "label_time": labels[:, 3],
+            "label_dir_x": labels[:, 4],
+            "label_dir_y": labels[:, 5],
             "file_name": filenames,
         })
 
