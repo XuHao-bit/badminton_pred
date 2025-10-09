@@ -193,7 +193,7 @@ class ImprovedLSTMRegressor(nn.Module):
 
 class SimplifiedLSTMRegressor(nn.Module):
     def __init__(self, num_points=21, input_dim=3, conv_dims=[32, 64],  # 减少卷积维度
-                 hidden_dim=128, num_layers=5, bidirectional=False,  # 简化LSTM
+                 hidden_dim=256, num_layers=5, bidirectional=False,  # 简化LSTM
                  drop=0.3):  # 降低dropout率
         super().__init__()
         self.name = 'SimplifiedLSTMRegressor'

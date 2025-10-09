@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.colors import Normalize
 import os
 
 # 可视化函数
@@ -64,6 +65,8 @@ def visual_df(name, log_time, df):
     df['euclidean_error'] = np.sqrt(df['err_x']**2 + df['err_y']** 2 + df['err_z']**2)
     avg_euclidean_err, mid_eu_err = df['euclidean_error'].mean(), df['euclidean_error'].median()
     df_sorted = df.sort_values(by='euclidean_error')
+    df_filtered = df.query('200 <= euclidean_error <= 250')
+    df_sampled = df_filtered.sample(n=10, random_state=42)
 
     print("误差统计结果：")
     print(avg_euclidean_err, mid_eu_err)
@@ -84,11 +87,14 @@ def visual_df(name, log_time, df):
     visualize_group(group_high, "Above_Avg_Err", log_time, avg_euclidean_err, save_path)
     visualize_group(group_low, "Below_Avg_Err", log_time, avg_euclidean_err, save_path)
 
-    print("预测精度最好的10个序列：")
+    print("\n预测精度最好的10个序列：")
     print(df_sorted.head(10)[['file_name', 'euclidean_error']].to_string(index=False))
 
-    print("预测精度最差的10个序列：")
+    print("\n预测精度最差的10个序列：")
     print(df_sorted.tail(10)[['file_name', 'euclidean_error']].to_string(index=False))
+
+    print("\nError 200-250随机采样的10个序列：")
+    print(df_sampled[['file_name', 'euclidean_error']].to_string(index=False))
 
     # # 提取预测和真实的 xy
     # pred_xy = df[["pred_x", "pred_y"]].values
@@ -128,9 +134,9 @@ def visual_df(name, log_time, df):
     time_error = df["pred_time"].values - df["label_time"].values
 
     # ===== 绘制落点误差 (X, Y) =====
-    plt.figure(figsize=(12, 5))
+    plt.figure(figsize=(15, 5))
 
-    plt.subplot(1, 2, 1)
+    plt.subplot(1, 3, 1)
     plt.scatter(x_error, y_error, alpha=0.6, s=10)
     plt.axhline(0, color="gray", linestyle="--")
     plt.axvline(0, color="gray", linestyle="--")
@@ -141,8 +147,19 @@ def visual_df(name, log_time, df):
     plt.title("Landing Point Error Distribution")
     plt.grid(True)
 
+    # ===== 绘制欧氏距离误差直方图 =====
+    plt.subplot(1, 3, 2)
+    plt.hist(df['euclidean_error'].values, bins=50, alpha=0.7, color="steelblue")
+    plt.axvline(mid_eu_err, color="red", linestyle="--", label="Mid Error")
+    plt.axvline(avg_euclidean_err, color="green", linestyle="--", label="Avg Error")
+    plt.xlim(0, 500)
+    plt.xlabel("Euclidean Error")
+    plt.ylabel("Count")
+    plt.title("Euclidean Error Distribution")
+    plt.legend()
+
     # ===== 绘制时间误差直方图 =====
-    plt.subplot(1, 2, 2)
+    plt.subplot(1, 3, 3)
     plt.hist(time_error, bins=50, alpha=0.7, color="steelblue")
     plt.axvline(0, color="red", linestyle="--", label="Zero Error")
     plt.xlabel("Time Error")
@@ -159,7 +176,49 @@ if __name__ == '__main__':
     from main import set_seed
     
     set_seed(seed=42)
-    result_dir = "./results/TransformerModel/20250918_134619.csv"
+    result_dir = "./results/TransformerModel/20250923_200310.csv"
     # 读取结果
     df = pd.read_csv(result_dir)
-    visual_df('TransformerModel', '20250918_134619', df)
+    visual_df('TransformerModel', '20250923_200310', df)
+
+    # 绘制 error-击球位置 关系图
+    df_sorted = df.sort_values(by='euclidean_error', ascending=True)
+
+    # 2. 从排序后的 DataFrame 中提取数据
+    pos_x, pos_y = [], []
+    errors = df_sorted['euclidean_error']
+
+    for index, row in df_sorted.iterrows():
+        file_name = row['file_name']
+        file_path = os.path.join('../data', file_name)
+
+        with open(file_path, 'r') as f:
+            first_line = f.readline()
+            coords = [float(num) for num in first_line.strip().split(':')[1].split(',')]
+            points_array = np.array(coords).reshape(21, 3)
+            mean_coords = np.mean(points_array, axis=0)
+            mean_x = mean_coords[0]
+            mean_y = mean_coords[1]
+            pos_x.append(mean_x)
+            pos_y.append(mean_y)
+
+    # 3. 创建图形和子图对象
+    fig, ax = plt.subplots(figsize=(8, 6))
+
+    # 4. 使用 scatter() 绘制散点图，并根据 'euclidean_error' 着色
+    # c=errors: 指定颜色依据，Matplotlib会自动将其映射到颜色
+    # cmap='viridis': 选择一个颜色映射，从紫色到黄色
+    # s=50: 设置点的大小
+    scatter = ax.scatter(pos_x, pos_y, c=errors, cmap='viridis', norm=Normalize(vmin=0, vmax=300), s=50)
+
+    # 5. 添加颜色条（Color Bar）
+    # 颜色条会显示颜色到误差数值的映射关系
+    cbar = fig.colorbar(scatter)
+    cbar.set_label('Euclidean Error')
+
+    # 6. 设置图表标题和标签
+    ax.set_title("Hit Position Coordinates Colored by Euclidean Error")
+    ax.set_xlabel("Position X")
+    ax.set_ylabel("Position Y")
+
+    plt.savefig('visualization/Position-Error Correlation')
