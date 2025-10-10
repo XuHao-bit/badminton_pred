@@ -70,7 +70,7 @@ def main():
     # model = ImprovedLSTMRegressor()
     # model = SimplifiedLSTMRegressor()
     # model = TransformerModel()
-    model = TransformerModelImproved()
+    model = ImprovedTransformerModel()
 
     # Init Logger
     logger = setup_logger(start_time, log_dir=f"./logs/{model.name}")

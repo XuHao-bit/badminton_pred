@@ -453,20 +453,28 @@ class TransformerModel(nn.Module):
         return output, output_time
 
 
-class TransformerModelImproved(nn.Module):
+class ImprovedTransformerModel(nn.Module):
     def __init__(self, seq_len=50, num_points=21, d_model=1024, nhead=4, num_layers=4, point_dim=3):
         super().__init__()
-        self.name = 'TransformerModelImproved'
+        self.name = 'ImprovedTransformerModel'
         self.num_points = num_points
         self.special_indices = [i for i in range(17 * 3, 21 * 3)]
         self.input_dim = num_points * point_dim
         self.special_input_dim = len(self.special_indices)
         self.d_model = d_model
 
+        # self.num_special_points = self.special_input_dim // point_dim
+        # self.pe_dim_per_point = 2
+        # self.point_pe_embedding = nn.Parameter(
+        #     torch.randn(1, 1, self.num_special_points * self.pe_dim_per_point)
+        # )
+
         self.pos_encoder = PositionalEncoding(d_model, dropout=0.1, max_len=seq_len)
 
         # self.pos_embedding = nn.Embedding(seq_len, d_model)
         # self.pos_dropout = nn.Dropout(0.1)
+
+        # combined_input_dim = self.special_input_dim + self.num_special_points * self.pe_dim_per_point  # 12 + 16 = 28
 
         # 特殊点的输入映射
         self.input_fc_special = nn.Sequential(
@@ -496,6 +504,11 @@ class TransformerModelImproved(nn.Module):
         B, T, _ = x.shape
 
         special_x = x[:, :, self.special_indices]  # (B, T, )
+
+        # point_pe_broadcast = self.point_pe_embedding.repeat(B, T, 1)
+        #
+        # special_x = torch.cat([special_x, point_pe_broadcast], dim=-1)
+
         special_proj = self.input_fc_special(special_x)  # (B, T, d_model)
 
         # fixed position encoding
