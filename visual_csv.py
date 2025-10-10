@@ -64,9 +64,11 @@ def visual_df(name, log_time, df):
     # 计算每个样本的欧氏距离误差（三维空间中两点间的直线距离）
     df['euclidean_error'] = np.sqrt(df['err_x']**2 + df['err_y']** 2 + df['err_z']**2)
     avg_euclidean_err, mid_eu_err = df['euclidean_error'].mean(), df['euclidean_error'].median()
+    p70_euclidean_err = df['euclidean_error'].quantile(0.7)
+    p90_euclidean_err = df['euclidean_error'].quantile(0.9)
     df_sorted = df.sort_values(by='euclidean_error')
-    df_filtered = df.query('200 <= euclidean_error <= 250')
-    df_sampled = df_filtered.sample(n=10, random_state=42)
+    # df_filtered = df.query('200 <= euclidean_error <= 250')
+    # df_sampled = df_filtered.sample(n=10, random_state=42)
 
     print("误差统计结果：")
     print(avg_euclidean_err, mid_eu_err)
@@ -93,8 +95,8 @@ def visual_df(name, log_time, df):
     print("\n预测精度最差的10个序列：")
     print(df_sorted.tail(10)[['file_name', 'euclidean_error']].to_string(index=False))
 
-    print("\nError 200-250随机采样的10个序列：")
-    print(df_sampled[['file_name', 'euclidean_error']].to_string(index=False))
+    # print("\nError 200-250随机采样的10个序列：")
+    # print(df_sampled[['file_name', 'euclidean_error']].to_string(index=False))
 
     # # 提取预测和真实的 xy
     # pred_xy = df[["pred_x", "pred_y"]].values
@@ -152,6 +154,8 @@ def visual_df(name, log_time, df):
     plt.hist(df['euclidean_error'].values, bins=50, alpha=0.7, color="steelblue")
     plt.axvline(mid_eu_err, color="red", linestyle="--", label="Mid Error")
     plt.axvline(avg_euclidean_err, color="green", linestyle="--", label="Avg Error")
+    plt.axvline(p70_euclidean_err, color="blue", linestyle="--", label="70% Error")
+    plt.axvline(p90_euclidean_err, color="yellow", linestyle="--", label="90% Error")
     plt.xlim(0, 500)
     plt.xlabel("Euclidean Error")
     plt.ylabel("Count")
@@ -176,10 +180,10 @@ if __name__ == '__main__':
     from main import set_seed
     
     set_seed(seed=42)
-    result_dir = "./results/TransformerModel/20250923_200310.csv"
+    result_dir = "./results/TransformerModel/20251010_122525.csv"
     # 读取结果
     df = pd.read_csv(result_dir)
-    visual_df('TransformerModel', '20250923_200310', df)
+    visual_df('TransformerModel', '20251010_122525', df)
 
     # 绘制 error-击球位置 关系图
     df_sorted = df.sort_values(by='euclidean_error', ascending=True)

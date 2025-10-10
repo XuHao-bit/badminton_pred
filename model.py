@@ -1,5 +1,6 @@
 ## model.py
 
+import math
 import torch
 import torch.nn as nn
 from torch.nn.utils.rnn import pack_padded_sequence
@@ -450,6 +451,96 @@ class TransformerModel(nn.Module):
         output_time = self.time_mlp(fused).squeeze(1)  # (B,)
 
         return output, output_time
+
+
+class TransformerModelImproved(nn.Module):
+    def __init__(self, seq_len=50, num_points=21, d_model=1024, nhead=4, num_layers=4, point_dim=3):
+        super().__init__()
+        self.name = 'TransformerModelImproved'
+        self.num_points = num_points
+        self.special_indices = [i for i in range(17 * 3, 21 * 3)]
+        self.input_dim = num_points * point_dim
+        self.special_input_dim = len(self.special_indices)
+        self.d_model = d_model
+
+        self.pos_encoder = PositionalEncoding(d_model, dropout=0.1, max_len=seq_len)
+
+        # self.pos_embedding = nn.Embedding(seq_len, d_model)
+        # self.pos_dropout = nn.Dropout(0.1)
+
+        # 特殊点的输入映射
+        self.input_fc_special = nn.Sequential(
+            nn.Linear(self.special_input_dim, d_model),
+            # nn.ReLU(),
+            # nn.Dropout(p=0.1),
+            # nn.Linear(d_model // 2, d_model),
+        )
+
+        # 特殊点Transformer编码器
+        encoder_layer_special = nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead, batch_first=True)
+        self.transformer_special = nn.TransformerEncoder(encoder_layer_special, num_layers=num_layers)
+
+        self.fusion_mlp = nn.Sequential(
+            nn.Linear(d_model, d_model // 2),
+            nn.ReLU(),
+            nn.Linear(d_model // 2, point_dim)
+        )
+
+        self.time_mlp = nn.Sequential(  # 新增 time_consuming 分支
+            nn.Linear(d_model, d_model // 2),
+            nn.ReLU(),
+            nn.Linear(d_model // 2, 1)  # 输出标量
+        )
+
+    def forward(self, x, mask):
+        B, T, _ = x.shape
+
+        special_x = x[:, :, self.special_indices]  # (B, T, )
+        special_proj = self.input_fc_special(special_x)  # (B, T, d_model)
+
+        # fixed position encoding
+        special_proj = self.pos_encoder(special_proj)
+
+        # learnable position encoding
+        # position_ids = torch.arange(0, T, dtype=torch.long, device=x.device).unsqueeze(0)  # (1, T)
+        # pos_embeds = self.pos_embedding(position_ids)
+        # special_proj = special_proj + pos_embeds
+        # special_proj = self.pos_dropout(special_proj)
+
+        out_special = self.transformer_special(special_proj, src_key_padding_mask=~mask)
+        final = out_special[:, -1, :]  # (B, d_model)
+
+        output = self.fusion_mlp(final)  # (B, 2)
+        output_time = self.time_mlp(final).squeeze(1)  # (B,)
+
+        return output, output_time
+
+
+class PositionalEncoding(nn.Module):
+    def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 50):
+        super().__init__()
+
+        position = torch.arange(max_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
+
+        pe = torch.zeros(max_len, 1, d_model)
+        pe[:, 0, 0::2] = torch.sin(position * div_term)
+        pe[:, 0, 1::2] = torch.cos(position * div_term)
+
+        # 注册为 buffer，它不是可训练参数，但会随模型保存和加载
+        self.register_buffer('pe', pe)
+        self.dropout = nn.Dropout(p=dropout)
+
+    def forward(self, x):
+        """
+        Args:
+            x: Tensor, 形状 (batch_size, seq_len, d_model)
+        """
+        # pe 的形状是 (max_len, 1, d_model)
+        # x 的形状是 (B, T, d_model)，T <= max_len
+        x = x + self.pe[:x.size(1)].squeeze(1)
+        return self.dropout(x)
+
 
 if __name__ == "__main__":
     from dataset import load_all_samples, BadmintonDataset, collate_fn_dynamic

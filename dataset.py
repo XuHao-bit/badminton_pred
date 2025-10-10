@@ -31,6 +31,9 @@ def parse_sample_file(file_path: str) -> Dict:
     drop_frame_str, drop_xyz_str = last_line.split(":")
     drop_frame = int(drop_frame_str)
     drop_xyz = np.array(list(map(float, drop_xyz_str.split(","))), dtype=np.float32)
+    if drop_xyz[0] < 0 or drop_xyz[0] > 670 or drop_xyz[1] < -305 or drop_xyz[1] > 305 or abs(drop_xyz[2]) > 10:
+        print(file_path)
+        return None
     # print(drop_frame, drop_xyz)
 
     frame_ids = []
@@ -39,6 +42,8 @@ def parse_sample_file(file_path: str) -> Dict:
         fid_str, coords_str = ln.split(":")
         fid = int(fid_str)
         coords = np.array(list(map(float, coords_str.split(","))), dtype=np.float32)
+        if len(coords) < 63:
+            print(file_path, fid)
         if len(coords) != 63:
             coords = coords[:63]
         frame_ids.append(fid)
@@ -61,7 +66,8 @@ def load_all_samples(folder: str, suffix='.txt') -> List[Dict]:
         path = os.path.join(folder, fn)
         try:
             s = parse_sample_file(path)
-            samples.append(s)
+            if s:
+                samples.append(s)
         except Exception as e:
             print(f"跳过 {fn}: {e}")
     return samples
