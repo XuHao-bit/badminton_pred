@@ -135,22 +135,32 @@ def visual_df(name, log_time, df):
     y_error = df["pred_y"].values - df["label_y"].values
     time_error = df["pred_time"].values - df["label_time"].values
 
-    # ===== 绘制落点误差 (X, Y) =====
-    plt.figure(figsize=(15, 5))
+    # ===== 计算方向误差 (角度，单位：度) =====
+    pred_dir = df[["pred_dir_x", "pred_dir_y"]].values
+    true_dir = df[["label_dir_x", "label_dir_y"]].values
+    cos_sim = np.sum(pred_dir * true_dir, axis=1) / (
+            np.linalg.norm(pred_dir, axis=1) * np.linalg.norm(true_dir, axis=1)
+    )
+    cos_sim = np.clip(cos_sim, -1.0, 1.0)  # 避免浮点误差
+    direction_error = np.degrees(np.arccos(cos_sim))
 
-    plt.subplot(1, 3, 1)
+    # ===== 绘制落点误差 (X, Y)、时间误差、方向误差 =====
+    plt.figure(figsize=(12, 10))  # 更接近正方形的画布
+
+    # (1) 落点误差散点
+    plt.subplot(2, 2, 1)
     plt.scatter(x_error, y_error, alpha=0.6, s=10)
     plt.axhline(0, color="gray", linestyle="--")
     plt.axvline(0, color="gray", linestyle="--")
-    plt.xlim(-400, 400)  # X轴限制在±800cm
-    plt.ylim(-400, 400)  # Y轴限制在±800cm
+    plt.xlim(-400, 400)
+    plt.ylim(-400, 400)
     plt.xlabel("X error")
     plt.ylabel("Y error")
     plt.title("Landing Point Error Distribution")
     plt.grid(True)
 
-    # ===== 绘制欧氏距离误差直方图 =====
-    plt.subplot(1, 3, 2)
+    # (3) 欧氏距离误差直方图
+    plt.subplot(2, 2, 2)
     plt.hist(df['euclidean_error'].values, bins=50, alpha=0.7, color="steelblue")
     plt.axvline(mid_eu_err, color="red", linestyle="--", label="Mid Error")
     plt.axvline(avg_euclidean_err, color="green", linestyle="--", label="Avg Error")
@@ -162,14 +172,22 @@ def visual_df(name, log_time, df):
     plt.title("Euclidean Error Distribution")
     plt.legend()
 
-    # ===== 绘制时间误差直方图 =====
-    plt.subplot(1, 3, 3)
+    # (3) 时间误差直方图
+    plt.subplot(2, 2, 3)
     plt.hist(time_error, bins=50, alpha=0.7, color="steelblue")
     plt.axvline(0, color="red", linestyle="--", label="Zero Error")
     plt.xlabel("Time Error")
     plt.ylabel("Count")
     plt.title("Time Error Distribution")
     plt.legend()
+
+    # (4) 方向误差直方图
+    plt.subplot(2, 2, 4)
+    plt.hist(direction_error, bins=50, alpha=0.7, color="seagreen")
+    plt.xlabel("Direction Error (°)")
+    plt.ylabel("Count")
+    plt.title("Direction Error Distribution")
+    plt.grid(True)
 
     plt.tight_layout()
     file_name = name + "_" + log_time + "_error_distributions.pdf"

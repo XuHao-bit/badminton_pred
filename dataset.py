@@ -87,7 +87,7 @@ def collate_fn_dynamic(batch):
         times: (B,)
         mask: (B, max_len)
     """
-    seqs, lengths, xyzs, times, filename = zip(*batch)
+    seqs, lengths, xyzs, times, filename, dirs = zip(*batch)
     lengths = torch.tensor(lengths, dtype=torch.long)
     feature_dim = seqs[0].shape[1]
     max_len = max(lengths)
@@ -112,8 +112,9 @@ def collate_fn_dynamic(batch):
     masks = torch.stack(masks, dim=0)              # (B, max_len)
     xyzs = torch.stack(xyzs, dim=0)                # (B,3)
     times = torch.stack(times, dim=0)              # (B,)
+    dirs = torch.stack(dirs, dim=0)                 # (B, 2)
 
-    return seqs_padded, lengths, masks, xyzs, times, filename
+    return seqs_padded, lengths, masks, xyzs, times, dirs, filename
 
 def resampling(samples: List[Dict],
                 num_subsamples: int = 5,
@@ -284,6 +285,14 @@ class BadmintonDataset(Dataset):
         label_xyz_raw = torch.tensor(s["label_xyz"], dtype=torch.float32)  # 原始XY轴标签（物理空间）
         label_time_raw = torch.tensor(drop_frame - frame_ids[-1], dtype=torch.float32)  # 时间标签（暂不加噪声）
 
+        # 方向标签
+        direction_vec = label_xyz_raw[:2] - torch.tensor([300.0, 0.0])
+        norm = torch.norm(direction_vec)
+        if norm > 1e-6:
+            direction_unit = direction_vec / norm
+        else:
+            direction_unit = torch.zeros_like(direction_vec)
+
         # 数据增强
         seq = seq.view(length, -1, 3)
         if self.mode == 'train' and random.random() > 0.5:
@@ -342,7 +351,7 @@ class BadmintonDataset(Dataset):
         label_xyz_norm = label_all[:3]
         label_time_norm = label_all[3]
 
-        return seq, torch.tensor(length, dtype=torch.long), label_xyz_norm, label_time_norm, file_name
+        return seq, torch.tensor(length, dtype=torch.long), label_xyz_norm, label_time_norm, file_name, direction_unit
     
     def get_norm_stats(self):
         return self.feature_mean, self.feature_std, self.label_mean, self.label_std
