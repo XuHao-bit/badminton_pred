@@ -60,6 +60,7 @@ def main():
     parser.add_argument("--num_subsamples", type=int, default=5)
     parser.add_argument("--delta", type=float, default=1.0)  # for huber loss (xyz loss)
     parser.add_argument("--lambda_time", type=float, default=0.1)  # for huber loss (xyz loss)
+    parser.add_argument("--lambda_direction", type=float, default=0.1)  # for huber loss (xyz loss)
     parser.add_argument("--aug_method", type=str, default='None')  # 可选：None, '平移', '旋转', '缩放', '噪声'
     args = parser.parse_args()
 
@@ -69,8 +70,8 @@ def main():
     # model = LSTMRegressor()
     # model = ImprovedLSTMRegressor()
     # model = SimplifiedLSTMRegressor()
-    # model = TransformerModel()
-    model = ImprovedTransformerModel()
+    model = TransformerModel()
+    # model = ImprovedTransformerModel()
 
     # Init Logger
     logger = setup_logger(start_time, log_dir=f"./logs/{model.name}")
