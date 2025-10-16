@@ -27,8 +27,10 @@ class Trainer:
         self.logger.info(f"Using device: {self.device}")
 
         self.model = model.to(self.device)
-        self.train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn_dynamic, num_workers=0)
-        self.test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn_dynamic, num_workers=0)
+        self.train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, 
+                                       collate_fn=lambda batch: collate_fn_dynamic(batch, max_len=args.max_len), num_workers=0)
+        self.test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, 
+                                      collate_fn=lambda batch: collate_fn_dynamic(batch, max_len=args.max_len), num_workers=0)
 
         # self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr, weight_decay=1e-5)
@@ -58,7 +60,7 @@ class Trainer:
         # return self.criterion(pred_xyz, labels_xyz)
 
     def train(self, num_epochs=50):
-        best_epoch, best_loss, best_xyz_err, best_time_err = 0, float("inf"), 0, 0
+        best_epoch, best_loss, best_xyz_err, best_time_err = 0, float("inf"), float("inf"), float("inf")
 
         for epoch in range(num_epochs):
             self.model.train()
@@ -90,26 +92,27 @@ class Trainer:
             self.logger.info(res_str)
 
             # save best model
-            if avg_xyz_loss + self.lambda_time * avg_time_loss < best_loss:
+            # if avg_xyz_loss + self.lambda_time * avg_time_loss < best_loss:
+            if avg_xyz_err < best_xyz_err:
                 best_epoch = epoch
-                best_loss = avg_xyz_loss + self.lambda_time * avg_time_loss
+                best_loss = avg_xyz_loss
                 best_xyz_err = avg_xyz_err
                 best_time_err = avg_time_err
                 torch.save(self.model.state_dict(), self.best_model_path)
 
                 # save model as onnx
-                self.model.to('cpu')
-                dummy_seq = torch.randn(1, 50, 63)
-                dummy_mask = torch.ones(1, 50, dtype=torch.bool)
-                torch.onnx.export(
-                    self.model,
-                    (dummy_seq, dummy_mask),
-                    self.best_model_path.replace('.pt', '.onnx'),
-                    input_names=['seq', 'mask'],
-                    output_names=['output'],
-                    dynamic_axes={"seq": {0: "batch_size", 1: "seq_len", 2: "feature_dim"}, "mask": {0: "batch_size", 1: "seq_len"}}
-                )
-                self.model.to(self.device)
+                # self.model.to('cpu')
+                # dummy_seq = torch.randn(1, 50, 63)
+                # dummy_mask = torch.ones(1, 50, dtype=torch.bool)
+                # torch.onnx.export(
+                #     self.model,
+                #     (dummy_seq, dummy_mask),
+                #     self.best_model_path.replace('.pt', '.onnx'),
+                #     input_names=['seq', 'mask'],
+                #     output_names=['output'],
+                #     dynamic_axes={"seq": {0: "batch_size", 1: "seq_len", 2: "feature_dim"}, "mask": {0: "batch_size", 1: "seq_len"}}
+                # )
+                # self.model.to(self.device)
 
                 self.logger.info(f"✅ Saved best model to {self.best_model_path}")
 

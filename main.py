@@ -48,7 +48,7 @@ def main():
     # parser.add_argument('--data_folder', type=str, default='/home/zhaoxuhao/badminton_xh/20250809_Seq_data_v2/20250809_Seq_data')
     parser.add_argument('--data_folder', type=str, default='../data')
     parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument("--lr", type=float, default=5e-5)
+    parser.add_argument("--lr", type=float, default=1e-5)
     parser.add_argument("--epochs", type=int, default=100)
     # parser.add_argument("--hidden_dim", type=int, default=128)
     # parser.add_argument("--num_layers", type=int, default=2)
@@ -70,7 +70,7 @@ def main():
     # model = ImprovedLSTMRegressor()
     # model = SimplifiedLSTMRegressor()
     # model = TransformerModel()
-    model = ImprovedTransformerModel()
+    model = ImprovedTransformerModel(seq_len=args.max_len)
 
     # Init Logger
     logger = setup_logger(start_time, log_dir=f"./logs/{model.name}")

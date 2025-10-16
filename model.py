@@ -1,6 +1,7 @@
 ## model.py
 
 import math
+import numpy as np
 import torch
 import torch.nn as nn
 from torch.nn.utils.rnn import pack_padded_sequence
@@ -454,7 +455,7 @@ class TransformerModel(nn.Module):
 
 
 class ImprovedTransformerModel(nn.Module):
-    def __init__(self, seq_len=50, num_points=21, d_model=1024, nhead=4, num_layers=4, point_dim=3):
+    def __init__(self, seq_len=100, num_points=21, d_model=1024, nhead=4, num_layers=4, point_dim=3):
         super().__init__()
         self.name = 'ImprovedTransformerModel'
         self.num_points = num_points
@@ -469,12 +470,13 @@ class ImprovedTransformerModel(nn.Module):
         #     torch.randn(1, 1, self.num_special_points * self.pe_dim_per_point)
         # )
 
+        # fixed_point_pe = self._create_fixed_point_pe()  # 调用新的生成函数
+        # # 注册为 buffer，它不可训练，但会随模型 state_dict 一起保存和加载
+        # self.register_buffer('fixed_point_pe', fixed_point_pe)
+
         self.pos_encoder = PositionalEncoding(d_model, dropout=0.1, max_len=seq_len)
 
-        # self.pos_embedding = nn.Embedding(seq_len, d_model)
-        # self.pos_dropout = nn.Dropout(0.1)
-
-        # combined_input_dim = self.special_input_dim + self.num_special_points * self.pe_dim_per_point  # 12 + 16 = 28
+        # self.special_input_dim = self.special_input_dim + self.num_special_points * self.pe_dim_per_point  # 12 + 16 = 28
 
         # 特殊点的输入映射
         self.input_fc_special = nn.Sequential(
@@ -491,14 +493,36 @@ class ImprovedTransformerModel(nn.Module):
         self.fusion_mlp = nn.Sequential(
             nn.Linear(d_model, d_model // 2),
             nn.ReLU(),
-            nn.Linear(d_model // 2, point_dim)
+            nn.Linear(d_model // 2, point_dim),
         )
 
         self.time_mlp = nn.Sequential(  # 新增 time_consuming 分支
             nn.Linear(d_model, d_model // 2),
             nn.ReLU(),
-            nn.Linear(d_model // 2, 1)  # 输出标量
+            nn.Linear(d_model // 2, 1),  # 输出标量
         )
+
+    def _create_fixed_point_pe(self):
+        # 这里的逻辑是为每个特殊点 (self.num_special_points) 生成一个固定的编码
+        # 假设 special_indices 对应 4 个点 (17, 18, 19, 20)，即 num_special_points = 4
+        # 每个点的 PE 维度是 2 (pe_dim_per_point = 2)
+
+        # 1. 创建位置索引 (0, 1, 2, 3)
+        position_indices = torch.arange(self.num_special_points, dtype=torch.float)
+
+        # 2. 生成 sin/cos 编码 (类似 Transformer 的 PE)
+        # 示例：使用维度 0 和 1
+        div_term = torch.exp(
+            torch.arange(0, self.pe_dim_per_point, 2).float() * (-np.log(10000.0) / self.pe_dim_per_point))
+
+        # 初始化 [num_special_points, pe_dim_per_point]
+        pe = torch.zeros(self.num_special_points, self.pe_dim_per_point)
+        pe[:, 0] = torch.sin(position_indices * div_term)
+        pe[:, 1] = torch.cos(position_indices * div_term)
+
+        # 展平并调整形状: [1, 1, num_special_points * pe_dim_per_point]
+        pe = pe.view(1, 1, -1)
+        return pe
 
     def forward(self, x, mask):
         B, T, _ = x.shape
@@ -506,7 +530,8 @@ class ImprovedTransformerModel(nn.Module):
         special_x = x[:, :, self.special_indices]  # (B, T, )
 
         # point_pe_broadcast = self.point_pe_embedding.repeat(B, T, 1)
-        #
+        # point_pe_broadcast = self.fixed_point_pe.repeat(B, T, 1)  # B, T, D_pe
+        # 
         # special_x = torch.cat([special_x, point_pe_broadcast], dim=-1)
 
         special_proj = self.input_fc_special(special_x)  # (B, T, d_model)

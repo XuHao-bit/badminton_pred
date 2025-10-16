@@ -180,7 +180,7 @@ if __name__ == '__main__':
     from main import set_seed
     
     set_seed(seed=42)
-    result_dir = "./results/TransformerModel/20251010_122525.csv"
+    result_dir = "./results/ImprovedTransformerModel/20251015_224433.csv"
     # 读取结果
     df = pd.read_csv(result_dir)
     visual_df('TransformerModel', '20251010_122525', df)
