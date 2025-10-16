@@ -1,5 +1,6 @@
 ## model.py
 
+import math
 import torch
 import torch.nn as nn
 from torch.nn.utils.rnn import pack_padded_sequence
@@ -194,7 +195,7 @@ class ImprovedLSTMRegressor(nn.Module):
 
 class SimplifiedLSTMRegressor(nn.Module):
     def __init__(self, num_points=21, input_dim=3, conv_dims=[32, 64],  # 减少卷积维度
-                 hidden_dim=128, num_layers=5, bidirectional=False,  # 简化LSTM
+                 hidden_dim=256, num_layers=5, bidirectional=False,  # 简化LSTM
                  drop=0.3):  # 降低dropout率
         super().__init__()
         self.name = 'SimplifiedLSTMRegressor'
@@ -399,7 +400,7 @@ class TransformerModel(nn.Module):
         self.base_input_dim = num_points * point_dim  # 原始关键点维度
 
         # 新增特征维度：1 (速度) + 3 (法向量) = 4
-        self.extra_dim = 4
+        self.extra_dim = 8  # 从4改成8
         self.input_dim = self.base_input_dim + self.extra_dim
         self.special_input_dim = len(self.special_indices) + self.extra_dim
 
@@ -440,7 +441,11 @@ class TransformerModel(nn.Module):
     def _compute_extra_features(self, x):
         """
         输入: x (B, T, 63)，即21点*3维
-        输出: (B, T-1, 4)，拼接的球拍速度(1维) + 法向量(3维)
+        输出: (B, T-2, 8)，包含：
+            - 球拍速度(1维)
+            - 加速度(1维)
+            - 位移方向(3维)
+            - 法向量(3维)
         """
         B, T, _ = x.shape
         x_points = x.view(B, T, self.num_points, self.point_dim)  # (B, T, 21, 3)
@@ -449,22 +454,31 @@ class TransformerModel(nn.Module):
         racket_pts = x_points[:, :, 17:21, :]  # (B, T, 4, 3)
         racket_center = racket_pts.mean(dim=2)  # (B, T, 3)
 
-        # 球拍速度: 当前帧中心 - 上一帧中心 → (B, T-1, 3)，取范数当作速度
-        velocity_vec = racket_center[:, 1:, :] - racket_center[:, :-1, :]
+        # === 速度 ===
+        velocity_vec = racket_center[:, 1:, :] - racket_center[:, :-1, :]  # (B, T-1, 3)
         velocity = torch.norm(velocity_vec, dim=-1, keepdim=True)  # (B, T-1, 1)
 
-        # 法向量:
+        # === 加速度 ===
+        acc_vec = velocity_vec[:, 1:, :] - velocity_vec[:, :-1, :]  # (B, T-2, 3)
+        acc_norm = torch.norm(acc_vec, dim=-1, keepdim=True)  # (B, T-2, 1)
+
+        # === 位移方向（单位化速度向量） ===
+        vel_dir = velocity_vec[:, 1:, :]  # 对齐到 T-2
+        vel_dir_norm = torch.norm(vel_dir, dim=-1, keepdim=True) + 1e-8
+        vel_dir_unit = vel_dir / vel_dir_norm  # (B, T-2, 3)
+
+        # === 球拍法向量 ===
         short_axis = x_points[:, :, 19, :] - x_points[:, :, 17, :]  # (B, T, 3)
         long_axis = x_points[:, :, 20, :] - x_points[:, :, 18, :]  # (B, T, 3)
-        normal = torch.cross(short_axis, long_axis, dim=-1)  # (B, T, 3)
-        norm = torch.sqrt((normal ** 2).sum(dim=-1, keepdim=True) + 1e-8)  # (B, T, 1)
-        normal = normal / norm
+        normal = torch.cross(short_axis, long_axis, dim=-1)
+        normal = normal / (torch.norm(normal, dim=-1, keepdim=True) + 1e-8)
+        normal = normal[:, 2:, :]  # 对齐到 T-2
 
-        # 丢掉第一帧，使维度对齐
-        normal = normal[:, 1:, :]  # (B, T-1, 3)
+        # === 速度大小 ===
+        velocity_mag = velocity[:, 1:, :]  # (B, T-2, 1)
 
-        # 拼接: (B, T-1, 1+3)
-        extra_feat = torch.cat([velocity, normal], dim=-1)
+        # 拼接: (B, T-2, 8)
+        extra_feat = torch.cat([velocity_mag, acc_norm, vel_dir_unit, normal], dim=-1)
         return extra_feat
 
     def forward(self, x, mask):
@@ -472,12 +486,12 @@ class TransformerModel(nn.Module):
         B, T, _ = x.shape
 
         # === 特征工程 ===
-        extra_feat = self._compute_extra_features(x)  # (B, T-1, 4)
-        x = x[:, 1:, :]  # 去掉第一帧 (B, T-1, 63)
-        mask = mask[:, 1:]  # 去掉第一帧 (B, T-1)
+        extra_feat = self._compute_extra_features(x)  # (B, T-2, 8)
+        x = x[:, 2:, :]  # 去掉前两帧 (B, T-2, 63)
+        mask = mask[:, 2:]  # (B, T-2)
 
         # 拼接新特征
-        x_aug = torch.cat([x, extra_feat], dim=-1)  # (B, T-1, 67)
+        x_aug = torch.cat([x, extra_feat], dim=-1)  # (B, T-2, 71)
 
         # --- 主分支 ---
         x_main_proj = self.input_fc_main(x_aug)
@@ -485,7 +499,7 @@ class TransformerModel(nn.Module):
         final_feat_main = out_main[:, -1, :]
 
         # --- 特殊点分支 ---
-        special_x = torch.cat([x[:, :, self.special_indices], extra_feat], dim=-1)  # (B, T-1, 12+4=16)
+        special_x = torch.cat([x[:, :, self.special_indices], extra_feat], dim=-1)
         special_proj = self.input_fc_special(special_x)
         out_special = self.transformer_special(special_proj, src_key_padding_mask=~mask)
         final_feat_special = out_special[:, -1, :]
@@ -497,6 +511,109 @@ class TransformerModel(nn.Module):
         output_direction = self.direction_mlp(fused)
 
         return output, output_time, output_direction
+
+
+class ImprovedTransformerModel(nn.Module):
+    def __init__(self, seq_len=50, num_points=21, d_model=1024, nhead=4, num_layers=4, point_dim=3):
+        super().__init__()
+        self.name = 'ImprovedTransformerModel'
+        self.num_points = num_points
+        self.special_indices = [i for i in range(17 * 3, 21 * 3)]
+        self.input_dim = num_points * point_dim
+        self.special_input_dim = len(self.special_indices)
+        self.d_model = d_model
+
+        # self.num_special_points = self.special_input_dim // point_dim
+        # self.pe_dim_per_point = 2
+        # self.point_pe_embedding = nn.Parameter(
+        #     torch.randn(1, 1, self.num_special_points * self.pe_dim_per_point)
+        # )
+
+        self.pos_encoder = PositionalEncoding(d_model, dropout=0.1, max_len=seq_len)
+
+        # self.pos_embedding = nn.Embedding(seq_len, d_model)
+        # self.pos_dropout = nn.Dropout(0.1)
+
+        # combined_input_dim = self.special_input_dim + self.num_special_points * self.pe_dim_per_point  # 12 + 16 = 28
+
+        # 特殊点的输入映射
+        self.input_fc_special = nn.Sequential(
+            nn.Linear(self.special_input_dim, d_model),
+            # nn.ReLU(),
+            # nn.Dropout(p=0.1),
+            # nn.Linear(d_model // 2, d_model),
+        )
+
+        # 特殊点Transformer编码器
+        encoder_layer_special = nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead, batch_first=True)
+        self.transformer_special = nn.TransformerEncoder(encoder_layer_special, num_layers=num_layers)
+
+        self.fusion_mlp = nn.Sequential(
+            nn.Linear(d_model, d_model // 2),
+            nn.ReLU(),
+            nn.Linear(d_model // 2, point_dim)
+        )
+
+        self.time_mlp = nn.Sequential(  # 新增 time_consuming 分支
+            nn.Linear(d_model, d_model // 2),
+            nn.ReLU(),
+            nn.Linear(d_model // 2, 1)  # 输出标量
+        )
+
+    def forward(self, x, mask):
+        B, T, _ = x.shape
+
+        special_x = x[:, :, self.special_indices]  # (B, T, )
+
+        # point_pe_broadcast = self.point_pe_embedding.repeat(B, T, 1)
+        #
+        # special_x = torch.cat([special_x, point_pe_broadcast], dim=-1)
+
+        special_proj = self.input_fc_special(special_x)  # (B, T, d_model)
+
+        # fixed position encoding
+        special_proj = self.pos_encoder(special_proj)
+
+        # learnable position encoding
+        # position_ids = torch.arange(0, T, dtype=torch.long, device=x.device).unsqueeze(0)  # (1, T)
+        # pos_embeds = self.pos_embedding(position_ids)
+        # special_proj = special_proj + pos_embeds
+        # special_proj = self.pos_dropout(special_proj)
+
+        out_special = self.transformer_special(special_proj, src_key_padding_mask=~mask)
+        final = out_special[:, -1, :]  # (B, d_model)
+
+        output = self.fusion_mlp(final)  # (B, 2)
+        output_time = self.time_mlp(final).squeeze(1)  # (B,)
+
+        return output, output_time
+
+
+class PositionalEncoding(nn.Module):
+    def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 50):
+        super().__init__()
+
+        position = torch.arange(max_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
+
+        pe = torch.zeros(max_len, 1, d_model)
+        pe[:, 0, 0::2] = torch.sin(position * div_term)
+        pe[:, 0, 1::2] = torch.cos(position * div_term)
+
+        # 注册为 buffer，它不是可训练参数，但会随模型保存和加载
+        self.register_buffer('pe', pe)
+        self.dropout = nn.Dropout(p=dropout)
+
+    def forward(self, x):
+        """
+        Args:
+            x: Tensor, 形状 (batch_size, seq_len, d_model)
+        """
+        # pe 的形状是 (max_len, 1, d_model)
+        # x 的形状是 (B, T, d_model)，T <= max_len
+        x = x + self.pe[:x.size(1)].squeeze(1)
+        return self.dropout(x)
+
 
 if __name__ == "__main__":
     from dataset import load_all_samples, BadmintonDataset, collate_fn_dynamic
