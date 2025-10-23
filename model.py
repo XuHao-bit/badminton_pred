@@ -496,10 +496,16 @@ class ImprovedTransformerModel(nn.Module):
             nn.Linear(d_model // 2, point_dim),
         )
 
-        self.time_mlp = nn.Sequential(  # 新增 time_consuming 分支
+        self.time_mlp = nn.Sequential(
             nn.Linear(d_model, d_model // 2),
             nn.ReLU(),
-            nn.Linear(d_model // 2, 1),  # 输出标量
+            nn.Linear(d_model // 2, 1),
+        )
+
+        self.direction_mlp = nn.Sequential(
+            nn.Linear(d_model, d_model // 2),
+            nn.ReLU(),
+            nn.Linear(d_model // 2, 1),
         )
 
     def _create_fixed_point_pe(self):
@@ -550,8 +556,9 @@ class ImprovedTransformerModel(nn.Module):
 
         output = self.fusion_mlp(final)  # (B, 2)
         output_time = self.time_mlp(final).squeeze(1)  # (B,)
+        output_direction = self.direction_mlp(final)
 
-        return output, output_time
+        return output, output_time, output_direction
 
 
 class PositionalEncoding(nn.Module):
