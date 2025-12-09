@@ -490,7 +490,13 @@ class ImprovedTransformerModel(nn.Module):
         encoder_layer_special = nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead, batch_first=True)
         self.transformer_special = nn.TransformerEncoder(encoder_layer_special, num_layers=num_layers)
 
-        self.fusion_mlp = nn.Sequential(
+        self.xyz_mlp = nn.Sequential(
+            nn.Linear(d_model, d_model // 2),
+            nn.ReLU(),
+            nn.Linear(d_model // 2, point_dim),
+        )
+
+        self.xyz_var_mlp = nn.Sequential(
             nn.Linear(d_model, d_model // 2),
             nn.ReLU(),
             nn.Linear(d_model // 2, point_dim),
@@ -505,7 +511,7 @@ class ImprovedTransformerModel(nn.Module):
         self.direction_mlp = nn.Sequential(
             nn.Linear(d_model, d_model // 2),
             nn.ReLU(),
-            nn.Linear(d_model // 2, 1),
+            nn.Linear(d_model // 2, 2),
         )
 
     def _create_fixed_point_pe(self):
@@ -554,11 +560,12 @@ class ImprovedTransformerModel(nn.Module):
         out_special = self.transformer_special(special_proj, src_key_padding_mask=~mask)
         final = out_special[:, -1, :]  # (B, d_model)
 
-        output = self.fusion_mlp(final)  # (B, 2)
+        output = self.xyz_mlp(final)  # (B, 2)
+        output_var = self.xyz_var_mlp(final)
         output_time = self.time_mlp(final).squeeze(1)  # (B,)
         output_direction = self.direction_mlp(final)
 
-        return output, output_time, output_direction
+        return output, output_var, output_time, output_direction
 
 
 class PositionalEncoding(nn.Module):

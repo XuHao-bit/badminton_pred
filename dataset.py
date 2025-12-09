@@ -96,7 +96,7 @@ def collate_fn_dynamic(batch, max_len = None):
     seqs_padded = []
     masks = []
 
-    for seq, l in zip(seqs, lengths):
+    for seq, l, fn in zip(seqs, lengths, filename):
         pad_len = max_len - l
         if pad_len > 0:
             pad = torch.zeros(pad_len, feature_dim, dtype=seq.dtype)
@@ -105,6 +105,15 @@ def collate_fn_dynamic(batch, max_len = None):
             seq_padded = seq
         mask = torch.ones(max_len, dtype=torch.bool)  # 先全设为True（默认填充）
         mask[:pad_len] = False  # 将前pad_l个位置设为False
+
+        original_seq_data = seq_padded[pad_len:]  # (l_item, feature_dim)
+
+        # 检查原始数据中的每一行是否全为零
+        is_all_zero_row = original_seq_data.abs().sum(dim=1).eq(0)
+
+        # 将原始数据中全零行的 mask 对应位置设置为 False
+        if is_all_zero_row.any():
+            mask[pad_len:][is_all_zero_row] = False
 
         seqs_padded.append(seq_padded)
         masks.append(mask)
