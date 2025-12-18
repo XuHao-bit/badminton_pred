@@ -155,8 +155,7 @@ class Trainer:
 
         with torch.no_grad():
             for batch in self.test_loader:
-                seqs, lengths, masks, labels_xyz, labels_time, labels_direction = [b.to(self.device) for b in
-                                                                                   batch[:-1]]
+                seqs, lengths, masks, labels_xyz, labels_time, labels_direction = [b.to(self.device) for b in batch[:-1]]
                 pred_xyz, pred_xyz_var, pred_time, pred_direction = self.model(seqs, masks)
 
                 # loss_xyz = self.criterion(pred_xyz, labels_xyz)

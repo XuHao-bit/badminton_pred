@@ -242,6 +242,14 @@ def visual_uncertainty(df, threshold=75):
     print(f"在设定不确定性的截断阈值为{threshold}的情况下：")
     print(f"保留的<1m样本占比 {less_1m / len(df_less_1m)}")
     print(f"丢弃的>1m样本占比 {more_1m / len(df_more_1m)}")
+
+    df_less_threshold = df[df['std_euclidean'] <= threshold]
+    df_more_threshold = df[df['std_euclidean'] > threshold]
+    less_threshold_true = len(df_less_threshold[df_less_threshold['err_euclidean'] <= 100])
+    more_threshold_true = len(df_more_threshold[df_more_threshold['err_euclidean'] > 100])
+    print(f"保留的样本中正确保留占比 {less_threshold_true / len(df_less_threshold)}")
+    print(f"丢弃的样本中正确丢弃占比 {more_threshold_true / len(df_more_threshold)}")
+
     print("\n================================\n")
 
 
@@ -258,9 +266,6 @@ def parse_pose_sequence(lines):
 def categorize_shot_custom(sequence):
     WRIST_IDX = 20  # 示例：右手手腕 (或球拍关键点)
     HIP_IDX = 12  # 示例：骨盆中心 (代表人的整体位置)
-
-    # 坐标轴定义 (假设数据是 x, y, z)
-    # 请确认哪个轴代表"高度"，哪个轴代表"前后场纵深"
     AXIS_HEIGHT = 2  # 示例：Z轴是高度
     AXIS_DEPTH = 0  # 示例：Y轴是纵深 (从网前到后场)
 
@@ -269,11 +274,11 @@ def categorize_shot_custom(sequence):
     # A. 击球位置 (纵深) 阈值 -> 需要 2 个数值来切分 前/中/后
     # [前场与中场的分界线, 中场与后场的分界线]
     # 示例: 假设数据归一化在 -1~1 之间, 0是中心
-    THRESH_DEPTH = [980, 1120]
+    THRESH_DEPTH_VAL = 1100
 
-    THRESH_HEIGHT = 175
+    THRESH_HEIGHT_VAL = 190
 
-    THRESH_VELOCITY = 8
+    THRESH_VELOCITY_VALS = [5, 9]
 
     """
     根据: 位置(3) x 高度(2) x 速度(2) 进行分类
@@ -289,54 +294,70 @@ def categorize_shot_custom(sequence):
     disp = np.linalg.norm(hit_frame[WRIST_IDX] - prev_frame[WRIST_IDX])
     v_val = disp / 10.0
 
-    # 2. 逻辑判定
-
-    # --- 位置判定 (Front / Mid / Back) ---
-    if p_val < THRESH_DEPTH[0]:
+    # --- A. 位置判定 (Front / Back) ---
+    # 只有一个阈值
+    if p_val < THRESH_DEPTH_VAL:
         pos_tag = "Front"
-    elif p_val < THRESH_DEPTH[1]:
-        pos_tag = "Mid"
     else:
         pos_tag = "Back"
 
-    # --- 高度判定 (High / Low) ---
-    if h_val > THRESH_HEIGHT:
+    # --- B. 高度判定 (High / Low) ---
+    if h_val > THRESH_HEIGHT_VAL:
         height_tag = "High"
     else:
         height_tag = "Low"
 
-    # --- 速度判定 (Fast / Slow) ---
-    if v_val > THRESH_VELOCITY:
-        speed_tag = "Fast"
-    else:
+    # --- C. 速度判定 (Slow / Medium / Fast) ---
+    # 有两个阈值
+    if v_val < THRESH_VELOCITY_VALS[0]:
         speed_tag = "Slow"
+    elif v_val < THRESH_VELOCITY_VALS[1]:
+        speed_tag = "Medium"
+    else:
+        speed_tag = "Fast"
 
-    # 3. 生成组合标签 (例如: Back_High_Fast)
+    # ================= 4. 生成标签与术语 =================
+
+    # 组合标签 (例如: Back_High_Medium)
     full_tag = f"{pos_tag}_{height_tag}_{speed_tag}"
 
-    # 4. 生成易读的羽毛球术语 (Optional: 辅助理解)
-    # 你可以根据这个映射表来检查分类是否合理
-    readable_name = full_tag  # 默认用标签
+    shot_type = full_tag  # 默认值
 
-    if pos_tag == "Back":
-        if height_tag == "High":
-            readable_name = "Smash/Clear (杀/高)" if speed_tag == "Fast" else "Drop (吊球)"
-        else:  # Back Low
-            readable_name = "Low Defense (后场低手接杀)"
+    # --- 映射逻辑表 (2Pos x 2Height x 3Speed = 12种组合) ---
 
-    elif pos_tag == "Front":
-        if height_tag == "Low":
-            readable_name = "Rush/Lift (扑/挑)" if speed_tag == "Fast" else "Net Spin (搓/放)"
-        else:  # Front High
-            readable_name = "Net Kill (网前封网)"
+    if pos_tag == "Back":  # 后场
+        if height_tag == "High":  # 上手球
+            if speed_tag == "Fast":
+                shot_type = "Smash/Clear (杀/高)"
+            elif speed_tag == "Medium":
+                shot_type = "Fast Drop (劈吊/点杀)"  # 新增: 中速攻击
+            else:
+                shot_type = "Drop (慢吊)"
+        else:  # 下手球
+            if speed_tag == "Fast":
+                shot_type = "Backcourt Drive (后场抽)"
+            elif speed_tag == "Medium":
+                shot_type = "Defense Drive (被动抽挡)"
+            else:
+                shot_type = "Low Defense (接杀挡网)"
 
-    elif pos_tag == "Mid":
-        if speed_tag == "Fast":
-            readable_name = "Drive (平抽挡)"
-        else:
-            readable_name = "Mid Transition (中场过渡)"
+    elif pos_tag == "Front":  # 前场
+        if height_tag == "Low":  # 下手球 (最常见的前场情况)
+            if speed_tag == "Fast":
+                shot_type = "Rush/Lift (扑/挑)"
+            elif speed_tag == "Medium":
+                shot_type = "Push (推球)"  # 新增: 中速推球
+            else:
+                shot_type = "Net Spin (搓/放)"
+        else:  # 上手球 (网前举拍)
+            if speed_tag == "Fast":
+                shot_type = "Net Kill (封网扑球)"
+            elif speed_tag == "Medium":
+                shot_type = "Net Tap (拦网/抹球)"
+            else:
+                shot_type = "Net Control (勾对角/假动作)"
 
-    return full_tag, readable_name, h_val, p_val, v_val
+    return full_tag, shot_type, h_val, p_val, v_val
 
 
 def visual_samples_distribution(df):
@@ -434,7 +455,9 @@ def visual_shot_categories(df):
     for index, row in df.iterrows():
         file_name = row['file_name']
         file_path = os.path.join(data_folder, file_name)
-        original_err = row['err_euclidean']
+        xyz_err = row['err_euclidean']
+        time_err = abs(row['pred_time'] - row['label_time'])
+        time_label = row["label_time"]
 
         try:
             with open(file_path, 'r') as f:
@@ -448,9 +471,11 @@ def visual_shot_categories(df):
 
             results_list.append({
                 'file_name': file_name,
-                'error': original_err,
+                'xyz_error': xyz_err,
+                'time_error': time_err,
+                'time_label': time_label,
                 'tag': tag,  # 组合标签 (Back_High_Fast)
-                'readable_type': readable,  # 易读术语
+                'shot_type': readable,  # 易读术语
                 'position': tag.split('_')[0],
                 'height': tag.split('_')[1],
                 'speed': tag.split('_')[2],
@@ -464,24 +489,31 @@ def visual_shot_categories(df):
 
     # 生成结果 DataFrame，过滤掉个别数量极少的类别
     res_df = pd.DataFrame(results_list)
-    res_df = res_df[res_df['readable_type'] != "Low Defense (后场低手接杀)"]
-    res_df = res_df[res_df['readable_type'] != "Rush/Lift (扑/挑)"]
-    res_df = res_df[res_df['readable_type'] != "Net Kill (网前封网)"]
+    counts = res_df['shot_type'].value_counts()
+    valid_types = counts[counts >= 3].index
+    res_df = res_df[res_df['shot_type'].isin(valid_types)]
 
     # ================= 结果分析输出 =================
 
     print("\n====== 1. 各组合类别的平均误差 (按误差从大到小排序) ======")
     # 重点看这里：哪个组合的 Error 最大？
-    summary = res_df.groupby('readable_type')['error'].agg(['count', 'mean', 'std'])
-    print(summary.sort_values(by='mean', ascending=False))
+    summary = res_df.groupby('shot_type').agg(
+        count=('xyz_error', 'count'),
+        mean_error_xyz=('xyz_error', 'mean'),
+        std_error_xyz=('xyz_error', 'std'),
+        mean_landing_time=('time_label', 'mean'),
+        mean_error_time=('time_error', 'mean'),
+    )
+    pd.set_option('display.max_columns', None)
+    print(summary.sort_values(by='mean_error_xyz', ascending=False))
 
     print("\n====== 2. 维度拆解分析 (查看哪个单一因素影响最大) ======")
     print("位置影响:")
-    print(res_df.groupby('position')['error'].mean())
+    print(res_df.groupby('position')['xyz_error'].mean())
     print("\n高度影响:")
-    print(res_df.groupby('height')['error'].mean())
+    print(res_df.groupby('height')['xyz_error'].mean())
     print("\n速度影响:")
-    print(res_df.groupby('speed')['error'].mean())
+    print(res_df.groupby('speed')['xyz_error'].mean())
 
     # ============================================
 
@@ -504,11 +536,11 @@ def visual_shot_categories(df):
     # binwidth: 设定柱子的宽度
     sns.violinplot(
         data=res_df,
-        x='error',  # 误差在 X 轴
-        y='readable_type',  # 类别在 Y 轴 (这样是水平排列，更易读)
-        hue='readable_type',  # 颜色区分
+        x='xyz_error',  # 误差在 X 轴
+        y='shot_type',  # 类别在 Y 轴 (这样是水平排列，更易读)
+        hue='shot_type',  # 颜色区分
         palette="tab10",
-        order=["Drop (吊球)", "Smash/Clear (杀/高)", "Net Spin (搓/放)", "Mid Transition (中场过渡)"],
+        order=["Fast Drop (劈吊/点杀)", "Drop (慢吊)", "Smash/Clear (杀/高)", "Net Spin (搓/放)", "Push (推球)"],
         inner="quartile",  # 【关键】在小提琴内部画出 四分位数线 (虚线)
         linewidth=1.5,
         cut=0  # 限制范围，不允许推测超出数据极值的范围
@@ -553,12 +585,19 @@ def visual_shot_categories(df):
 
 if __name__ == '__main__':
     from main import set_seed
-    data_folder = '../data/data_1204_infer'
+    data_folder = '../data/data_1217_infer_+5'
     
     set_seed(seed=42)
     # result_dir = "./results/ImprovedTransformerModel/20251029_162224.csv"
-    result_dir = "./results/ImprovedTransformerModel/20251204_222914_mc20_total_uncertainty.csv"
+    result_dir = "./results/ImprovedTransformerModel/20251218_020140_mc20.csv"
     df = pd.read_csv(result_dir)
+
+    # 按照落地时间label取前30%快的球
+    # quantile_30 = df['label_time'].quantile(0.3)
+    # print(f'\n\nTop30s 落地时间： {quantile_30}帧')
+    # df = df.loc[df['label_time'] <= 245].copy()
+    # df_short_time = df.loc[df['label_time'] < 200]
+
     visual_df('ImprovedTransformerModel', '20251127_220434', df)
 
     # 可视化不确定性，设定不确定性的截断阈值
@@ -568,13 +607,6 @@ if __name__ == '__main__':
     visual_samples_distribution(df)
     # 可视化不同类别球的预测精度
     visual_shot_categories(df)
-
-    # 按照落地时间label取前30%快的球
-    # quantile_30 = df['label_time'].quantile(0.3)
-    # print(f'\n\nTop 30% 落地时间： {quantile_30}帧')
-    # df_short_time = df.loc[df['label_time'] <= quantile_30].copy()
-    # # df_short_time = df.loc[df['label_time'] < 200]
-    # visual_df('ImprovedTransformerModel', '20251120_213417_short', df_short_time)
 
 
     # # 绘制 error-击球位置 关系图

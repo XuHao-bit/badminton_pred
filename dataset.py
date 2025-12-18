@@ -35,6 +35,7 @@ def parse_sample_file(file_path: str) -> Dict:
         print(file_path, drop_xyz)
         return None
     # print(drop_frame, drop_xyz)
+    drop_xyz[2] = 0.0
 
     frame_ids = []
     frames = []
@@ -46,6 +47,29 @@ def parse_sample_file(file_path: str) -> Dict:
             print(file_path, fid)
         if len(coords) != 63:
             coords = coords[:63]
+
+        # ================== 新增：球拍几何合法性检查 (NumPy版) ==================
+        # 提取末 4 个关键点 (4, 3)
+        # 假设最后12个数是球拍的4个点
+        pts = coords[-12:].reshape(4, 3)
+        P1, P2, P3, P4 = pts[0], pts[1], pts[2], pts[3]
+
+        # 规则 1：四面体体积
+        # matrix shape: (3, 3)
+        mat = np.stack([P2 - P1, P3 - P1, P4 - P1])
+        v = np.abs(np.linalg.det(mat)) / 6.0
+        bad_volume = (v > 2000)
+
+        # 规则 2：长轴 / 短轴长度
+        short_axis = np.linalg.norm(P2 - P1)
+        long_axis = np.linalg.norm(P4 - P3)
+        bad_axis = (short_axis > 100) or (long_axis > 100)
+
+        # 若满足任意规则 → 将该帧数据全置为 0
+        if bad_volume or bad_axis:
+            coords[:] = 0.0
+        # ======================================================================
+
         frame_ids.append(fid)
         frames.append(coords)
 
@@ -114,6 +138,34 @@ def collate_fn_dynamic(batch, max_len = None):
         # 将原始数据中全零行的 mask 对应位置设置为 False
         if is_all_zero_row.any():
             mask[pad_len:][is_all_zero_row] = False
+
+        # 新增：按帧检测异常关键点 → mask=False
+        # for i in range(max_len - l, max_len):  # 只检查真实帧（后面的 padding 不检查）
+        #     frame = seq_padded[i]  # (63,)
+        #
+        #     # 提取末 4 个关键点（三维）
+        #     pts = frame[-12:].view(4, 3)  # 最后12维组成4个点
+        #
+        #     P1, P2, P3, P4 = pts[0], pts[1], pts[2], pts[3]
+        #
+        #     # ----- 规则 1：四面体体积 -----
+        #     v = torch.abs(torch.det(torch.stack([
+        #         P2 - P1,
+        #         P3 - P1,
+        #         P4 - P1
+        #     ]))) / 6.0
+        #
+        #     bad_volume = (v > 2000)
+        #
+        #     # ----- 规则 2：长轴 / 短轴长度 -----
+        #     short_axis = torch.norm(P2 - P1)
+        #     long_axis = torch.norm(P4 - P3)
+        #
+        #     bad_axis = (short_axis > 100) or (long_axis > 100)
+        #
+        #     # 若满足任意规则 → mask=False
+        #     if bad_volume or bad_axis:
+        #         mask[i] = False
 
         seqs_padded.append(seq_padded)
         masks.append(mask)
@@ -250,7 +302,7 @@ class BadmintonDataset(Dataset):
             self.feature_std = all_features.std(axis=0, keepdims=True) + 1e-6
             self.label_mean = all_labels.mean(axis=0, keepdims=True)
             self.label_std = all_labels.std(axis=0, keepdims=True) + 1e-6
-            self.noise_std_x = self.label_std[0][0]/5 # 176.7 * 0.1（可后续调为1/8或1/5倍）
+            self.noise_std_x = self.label_std[0][0]/5  # 176.7 * 0.1（可后续调为1/8或1/5倍）
             self.noise_std_y = self.label_std[0][1]/5  # 181.86 * 0.1
 
             # resampling_v2, 每个样本copy几份
@@ -285,8 +337,8 @@ class BadmintonDataset(Dataset):
             # 测试时：从结尾取固定长度（或保持原始逻辑）
             total_len = len(total_frames)
             seq_len = min(total_len, self.max_len)
-            start_idx = total_len - seq_len  # 从结尾取
             end_idx = total_len - 1
+            start_idx = end_idx - seq_len + 1
 
         # 截取子样本
         seq = torch.from_numpy(total_frames[start_idx:end_idx+1]).float()
