@@ -105,7 +105,8 @@ def main():
                                label_mean=label_mean, label_std=label_std)
     # 4. 打印
     logger.info("========== Training Data 统计信息 ==========")
-    logger.info(f"样本数量: {len(train_dataset)}")
+    logger.info(f"训练样本数量: {len(train_dataset)}")
+    logger.info(f"测试样本数量: {len(test_dataset)}")
     logger.info(f"特征 mean: {feat_mean.shape}, 示例前5个维度: {feat_mean[0, :5]}")
     logger.info(f"特征 std : {feat_std.shape}, 示例前5个维度: {feat_std[0, :5]}")
 

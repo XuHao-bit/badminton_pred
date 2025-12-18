@@ -5,6 +5,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.nn.utils.rnn import pack_padded_sequence
+import torch.nn.functional as F
 
 class LSTMRegressor(nn.Module):
     def __init__(self, input_dim=63, hidden_dim=128, num_layers=2, bidirectional=True, drop=0.5):
@@ -395,21 +396,26 @@ class TransformerModel(nn.Module):
         super().__init__()
         self.name = 'TransformerModel'
         self.num_points = num_points
-        self.special_indices = [i for i in range(17*3, 21*3)]
-        self.input_dim = num_points * point_dim
-        self.special_input_dim = len(self.special_indices)
+        self.point_dim = point_dim
+        self.special_indices = [i for i in range(17*point_dim, 21*point_dim)]  # 球拍四点坐标
+        self.base_input_dim = num_points * point_dim  # 原始关键点维度
+
+        # 新增特征维度：1 (速度) + 3 (法向量) = 4
+        self.extra_dim = 8  # 从4改成8
+        self.input_dim = self.base_input_dim + self.extra_dim
+        self.special_input_dim = len(self.special_indices) + self.extra_dim
+
         self.d_model = d_model
 
-        # 全部点的输入映射
+        # 主分支输入映射
         self.input_fc_main = nn.Linear(self.input_dim, d_model)
-        # 特殊点的输入映射
+        # 特殊点分支输入映射
         self.input_fc_special = nn.Linear(self.special_input_dim, d_model)
 
-        # 主Transformer编码器
+        # Transformer 编码器
         encoder_layer_main = nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead, batch_first=True)
         self.transformer_main = nn.TransformerEncoder(encoder_layer_main, num_layers=num_layers)
 
-        # 特殊点Transformer编码器
         encoder_layer_special = nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead, batch_first=True)
         self.transformer_special = nn.TransformerEncoder(encoder_layer_special, num_layers=num_layers)
 
@@ -420,38 +426,92 @@ class TransformerModel(nn.Module):
             nn.Linear(d_model, point_dim)
         )
 
-        self.time_mlp = nn.Sequential(  # 新增 time_consuming 分支
+        self.time_mlp = nn.Sequential(
             nn.Linear(d_model * 2, d_model),
             nn.ReLU(),
-            nn.Linear(d_model, 1)  # 输出标量
+            nn.Linear(d_model, 1)
         )
 
+        self.direction_mlp = nn.Sequential(
+            nn.Linear(d_model * 2, d_model),
+            nn.ReLU(),
+            nn.Linear(d_model, 2),
+            nn.Tanh()
+        )
+
+    def _compute_extra_features(self, x):
+        """
+        输入: x (B, T, 63)，即21点*3维
+        输出: (B, T-2, 8)，包含：
+            - 球拍速度(1维)
+            - 加速度(1维)
+            - 位移方向(3维)
+            - 法向量(3维)
+        """
+        B, T, _ = x.shape
+        x_points = x.view(B, T, self.num_points, self.point_dim)  # (B, T, 21, 3)
+
+        # 球拍四点：17,18,19,20
+        racket_pts = x_points[:, :, 17:21, :]  # (B, T, 4, 3)
+        racket_center = racket_pts.mean(dim=2)  # (B, T, 3)
+
+        # === 速度 ===
+        velocity_vec = racket_center[:, 1:, :] - racket_center[:, :-1, :]  # (B, T-1, 3)
+        velocity = torch.norm(velocity_vec, dim=-1, keepdim=True)  # (B, T-1, 1)
+
+        # === 加速度 ===
+        acc_vec = velocity_vec[:, 1:, :] - velocity_vec[:, :-1, :]  # (B, T-2, 3)
+        acc_norm = torch.norm(acc_vec, dim=-1, keepdim=True)  # (B, T-2, 1)
+
+        # === 位移方向（单位化速度向量） ===
+        vel_dir = velocity_vec[:, 1:, :]  # 对齐到 T-2
+        vel_dir_norm = torch.norm(vel_dir, dim=-1, keepdim=True) + 1e-8
+        vel_dir_unit = vel_dir / vel_dir_norm  # (B, T-2, 3)
+
+        # === 球拍法向量 ===
+        short_axis = x_points[:, :, 19, :] - x_points[:, :, 17, :]  # (B, T, 3)
+        long_axis = x_points[:, :, 20, :] - x_points[:, :, 18, :]  # (B, T, 3)
+        normal = torch.cross(short_axis, long_axis, dim=-1)
+        normal = normal / (torch.norm(normal, dim=-1, keepdim=True) + 1e-8)
+        normal = normal[:, 2:, :]  # 对齐到 T-2
+
+        # === 速度大小 ===
+        velocity_mag = velocity[:, 1:, :]  # (B, T-2, 1)
+
+        # 拼接: (B, T-2, 8)
+        extra_feat = torch.cat([velocity_mag, acc_norm, vel_dir_unit, normal], dim=-1)
+        return extra_feat
+
     def forward(self, x, mask):
+        # x: (B, T, 63)，mask: (B, T)
         B, T, _ = x.shape
 
+        # === 特征工程 ===
+        extra_feat = self._compute_extra_features(x)  # (B, T-2, 8)
+        x = x[:, 2:, :]  # 去掉前两帧 (B, T-2, 63)
+        mask = mask[:, 2:]  # (B, T-2)
+
+        # 拼接新特征
+        x_aug = torch.cat([x, extra_feat], dim=-1)  # (B, T-2, 71)
+
         # --- 主分支 ---
-        x_main = x
-        x_main_proj = self.input_fc_main(x_main)  # (B, T, d_model)
-        x_main_res = x_main_proj.clone()
-        # print(x_main_proj, mask)
+        x_main_proj = self.input_fc_main(x_aug)
         out_main = self.transformer_main(x_main_proj, src_key_padding_mask=~mask)
-        out_main = out_main + x_main_res
-        final_feat_main = out_main[:, -1, :]  # (B, d_model)
+        final_feat_main = out_main[:, -1, :]
 
         # --- 特殊点分支 ---
-        special_x = x[:, :, self.special_indices]  # (B, T, )
-        special_proj = self.input_fc_special(special_x)  # (B, T, d_model)
-        special_res = special_proj.clone()
+        special_x = torch.cat([x[:, :, self.special_indices], extra_feat], dim=-1)
+        special_proj = self.input_fc_special(special_x)
         out_special = self.transformer_special(special_proj, src_key_padding_mask=~mask)
-        out_special = out_special + special_res
-        final_feat_special = out_special[:, -1, :]  # (B, d_model)
+        final_feat_special = out_special[:, -1, :]
 
         # --- 融合 ---
-        fused = torch.cat([final_feat_main, final_feat_special], dim=1)  # (B, 2*d_model)
-        output = self.fusion_mlp(fused)  # (B, 2)
-        output_time = self.time_mlp(fused).squeeze(1)  # (B,)
+        fused = torch.cat([final_feat_main, final_feat_special], dim=1)
+        output = self.fusion_mlp(fused)
+        output_time = self.time_mlp(fused).squeeze(1)
+        output_direction = self.direction_mlp(fused)
 
-        return output, output_time
+        return output, output_time, output_direction
 
 
 class ImprovedTransformerModel(nn.Module):
