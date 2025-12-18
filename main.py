@@ -46,7 +46,7 @@ def main():
     
     parser = argparse.ArgumentParser()
     # parser.add_argument('--data_folder', type=str, default='/home/zhaoxuhao/badminton_xh/20250809_Seq_data_v2/20250809_Seq_data')
-    parser.add_argument('--data_folder', type=str, default='20250809_Seq_data')
+    parser.add_argument('--data_folder', type=str, default='../data/data_1204_infer')
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=5e-5)
     parser.add_argument("--epochs", type=int, default=100)
@@ -59,8 +59,8 @@ def main():
     parser.add_argument("--max_len", type=int, default=50)
     parser.add_argument("--num_subsamples", type=int, default=5)
     parser.add_argument("--delta", type=float, default=1.0)  # for huber loss (xyz loss)
-    parser.add_argument("--lambda_time", type=float, default=0.1)  # for huber loss (xyz loss)
-    parser.add_argument("--lambda_direction", type=float, default=0.1)  # for huber loss (xyz loss)
+    parser.add_argument("--lambda_time", type=float, default=0.1)  # for huber loss (time loss)
+    parser.add_argument("--lambda_direction", type=float, default=0.1)  # for huber loss (direction loss)
     parser.add_argument("--aug_method", type=str, default='None')  # 可选：None, '平移', '旋转', '缩放', '噪声'
     args = parser.parse_args()
 
@@ -70,8 +70,8 @@ def main():
     # model = LSTMRegressor()
     # model = ImprovedLSTMRegressor()
     # model = SimplifiedLSTMRegressor()
-    model = TransformerModel()
-    # model = ImprovedTransformerModel()
+    # model = TransformerModel()
+    model = ImprovedTransformerModel(seq_len=args.max_len)
 
     # Init Logger
     logger = setup_logger(start_time, log_dir=f"./logs/{model.name}")
@@ -100,7 +100,7 @@ def main():
 
     train_dataset = BadmintonDataset(train_samples, mode="train", min_len=args.min_len, max_len=args.max_len, num_subsamples=args.num_subsamples, aug_method=args.aug_method)
     feat_mean, feat_std, label_mean, label_std = train_dataset.get_norm_stats()
-    test_dataset = BadmintonDataset(test_samples, mode="test", min_len=50, max_len=args.max_len,
+    test_dataset = BadmintonDataset(test_samples, mode="test", max_len=args.max_len,
                                feature_mean=feat_mean, feature_std=feat_std,
                                label_mean=label_mean, label_std=label_std)
     # 4. 打印
