@@ -43,15 +43,15 @@ def parse_sample_file(file_path: str) -> Dict:
         fid_str, coords_str = ln.split(":")
         fid = int(fid_str)
         coords = np.array(list(map(float, coords_str.split(","))), dtype=np.float32)
-        if len(coords) < 63:
+        if len(coords) < 66:
             print(file_path, fid)
-        if len(coords) != 63:
-            coords = coords[:63]
+        if len(coords) != 66:
+            coords = coords[:66]
 
         # ================== 新增：球拍几何合法性检查 (NumPy版) ==================
         # 提取末 4 个关键点 (4, 3)
         # 假设最后12个数是球拍的4个点
-        pts = coords[-12:].reshape(4, 3)
+        pts = coords[-15:-3].reshape(4, 3)
         P1, P2, P3, P4 = pts[0], pts[1], pts[2], pts[3]
 
         # 规则 1：四面体体积
