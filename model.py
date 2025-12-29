@@ -515,11 +515,11 @@ class TransformerModel(nn.Module):
 
 
 class ImprovedTransformerModel(nn.Module):
-    def __init__(self, seq_len=100, num_points=21, d_model=1024, nhead=4, num_layers=4, point_dim=3):
+    def __init__(self, seq_len=100, num_points=22, d_model=1024, nhead=4, num_layers=4, point_dim=3):
         super().__init__()
         self.name = 'ImprovedTransformerModel'
         self.num_points = num_points
-        self.special_indices = [i for i in range(17 * 3, 21 * 3)]
+        self.special_indices = [i for i in range(17 * 3, 22 * 3)]
         self.input_dim = num_points * point_dim
         self.special_input_dim = len(self.special_indices)
         self.d_model = d_model

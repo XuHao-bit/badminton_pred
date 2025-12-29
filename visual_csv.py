@@ -229,7 +229,7 @@ def visual_uncertainty(df, threshold=75):
     plt.ylabel(f'Predictive Uncertainty')
     plt.ylim(0, 225)
     plt.grid(True, linestyle='--', alpha=0.6)
-    plt.savefig('visualization/Error-std aleatoric Correlation')
+    plt.savefig('visualization/Error-std aleatoric Correlation', bbox_inches='tight')
     # plt.savefig('visualization/Error-std epistemic Correlation')
     # plt.savefig('visualization/Error-std Correlation')
     print(f"\n成功保存预测误差-不确定性的散点图")
@@ -442,7 +442,7 @@ def visual_samples_distribution(df):
     plt.ylabel('Count')
 
     plt.tight_layout()
-    plt.savefig('visualization/Position, Height, Velocity Distribution')
+    plt.savefig('visualization/Position, Height, Velocity Distribution', bbox_inches='tight')
 
 
 def visual_shot_categories(df):
@@ -580,33 +580,32 @@ def visual_shot_categories(df):
     # ax.add_artist(leg1)
 
     plt.tight_layout()
-    plt.savefig('visualization/Prediction Error on different category')
+    plt.savefig('visualization/Prediction Error on different category', bbox_inches='tight')
 
 
 if __name__ == '__main__':
     from main import set_seed
-    data_folder = '../data/data_1217_infer_+5'
+    data_folder = '../data/data_1217_infer_ext5'
     
     set_seed(seed=42)
-    # result_dir = "./results/ImprovedTransformerModel/20251029_162224.csv"
-    result_dir = "./results/ImprovedTransformerModel/20251218_020140_mc20.csv"
+    result_dir = "./results/ImprovedTransformerModel/20251226_014735_mc20.csv"
+    # result_dir = "./results/ImprovedTransformerModel/20251226_103131_mc20.csv"
     df = pd.read_csv(result_dir)
 
     # 按照落地时间label取前30%快的球
     # quantile_30 = df['label_time'].quantile(0.3)
     # print(f'\n\nTop30s 落地时间： {quantile_30}帧')
-    # df = df.loc[df['label_time'] <= 245].copy()
-    # df_short_time = df.loc[df['label_time'] < 200]
+    df = df.loc[df['label_time'] <= 245].copy()
 
-    visual_df('ImprovedTransformerModel', '20251127_220434', df)
+    visual_df('ImprovedTransformerModel', '20251226_000032', df)
 
     # 可视化不确定性，设定不确定性的截断阈值
-    visual_uncertainty(df, threshold=75)
+    visual_uncertainty(df, threshold=70)
 
     # 可视化测试样本关于各个指标的分布
-    visual_samples_distribution(df)
-    # 可视化不同类别球的预测精度
-    visual_shot_categories(df)
+    # visual_samples_distribution(df)
+    # # 可视化不同类别球的预测精度
+    # visual_shot_categories(df)
 
 
     # # 绘制 error-击球位置 关系图

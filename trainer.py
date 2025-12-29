@@ -96,7 +96,6 @@ class Trainer:
                 pred_xyz, pred_xyz_var, pred_time, pred_direction = self.model(seqs, masks)
 
                 # loss_xyz = self.cal_xyz_loss(pred_xyz, labels_xyz)
-                # loss_xyz = self.criterion(pred_xyz, labels_xyz)
                 loss_xyz = self.regression_criterion_xyz(pred_xyz, pred_xyz_var, labels_xyz)
                 loss_time = self.criterion(pred_time, labels_time)
                 # loss_time = self.l1_criterion(pred_time, labels_time)
@@ -118,8 +117,9 @@ class Trainer:
             self.logger.info(res_str)
 
             # save best model
-            # if avg_xyz_loss + self.lambda_time * avg_time_loss < best_loss:
-            if avg_xyz_err < best_xyz_err:
+            # if avg_xyz_loss + self.lambda_time * avg_time_loss + self.lambda_direction * avg_dir_loss < best_loss:
+            if avg_xyz_loss < best_loss:
+            # if avg_xyz_err < best_xyz_err:
                 best_epoch = epoch
                 best_loss = avg_xyz_loss
                 best_xyz_err = avg_xyz_err
