@@ -43,28 +43,38 @@ def setup_logger(timestamp, log_dir="./logs"):
 
 def main():
     start_time = datetime.now().strftime("%Y%m%d_%H%M%S")
-    logger = setup_logger(start_time)
-    logger.time = start_time
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data_folder', type=str, default='/home/zhaoxuhao/badminton_xh/20250809_Seq_data')
+    parser.add_argument('--data_folder', type=str, default='../data/data_1225_test_ext5')
     parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument("--lr", type=float, default=1e-3)
-    parser.add_argument("--epochs", type=int, default=50)
-    parser.add_argument("--hidden_dim", type=int, default=128)
-    parser.add_argument("--num_layers", type=int, default=2)
-    parser.add_argument("--bidirectional", action="store_true", default=True)
+    parser.add_argument("--lr", type=float, default=2e-5)
+    parser.add_argument("--epochs", type=int, default=100)
+    # parser.add_argument("--hidden_dim", type=int, default=128)
+    # parser.add_argument("--num_layers", type=int, default=2)
+    # parser.add_argument("--bidirectional", action="store_true", default=True)
     parser.add_argument("--model_dir", type=str, default="./models")
     parser.add_argument("--results_dir", type=str, default="./results")
     parser.add_argument("--min_len", type=int, default=10)
     parser.add_argument("--max_len", type=int, default=50)
     parser.add_argument("--num_subsamples", type=int, default=5)
+    parser.add_argument("--delta", type=float, default=1.0)  # for huber loss (xyz loss)
+    parser.add_argument("--lambda_time", type=float, default=0.1)  # for huber loss (time loss)
+    parser.add_argument("--lambda_direction", type=float, default=0.1)  # for huber loss (direction loss)
+    parser.add_argument("--aug_method", type=str, default='None')  # 可选：None, '平移', '旋转', '缩放', '噪声'
     args = parser.parse_args()
-    for arg in vars(args):
-        logger.info(f"--{arg}: {getattr(args, arg)}")
 
     # 1. 加载数据
     set_seed()
+    # 2. 定义模型
+    # model = LSTMRegressor()
+    # model = ImprovedLSTMRegressor()
+    # model = SimplifiedLSTMRegressor()
+    model = ImprovedTransformerModel(seq_len=args.max_len)
+
+    logger = setup_logger(start_time, log_dir=f"./logs/{model.name}")
+    logger.time = start_time
+    args.model_dir = os.path.join(args.model_dir, model.name)
+    args.results_dir = os.path.join(args.results_dir, model.name)
     logger.info("========== 📂 Loading samples ==========")
     samples = load_all_samples(args.data_folder)
     random.shuffle(samples)
@@ -73,7 +83,8 @@ def main():
     # 划分 train/test
     split_idx = int(0.8 * len(samples))
     train_samples = samples[:split_idx]
-    test_samples = samples[split_idx:]
+    # test_samples = samples[split_idx:]
+    test_samples = samples[:]
 
     train_dataset = BadmintonDataset(train_samples, mode="train", min_len=args.min_len, max_len=args.max_len, num_subsamples=args.num_subsamples)
     feat_mean, feat_std, label_mean, label_std = train_dataset.get_norm_stats()
@@ -89,15 +100,9 @@ def main():
     logger.info(f"标签 mean: {label_mean.shape}, 值: {label_mean[0]}")
     logger.info(f"标签 std : {label_std.shape}, 值: {label_std[0]}")
 
-    # 2. 定义模型
-    # model = LSTMRegressor()
-    # model = ImprovedLSTMRegressor()
-    model = SimplifiedLSTMRegressor()
-    logger.info("========== Model 信息 ==========")
-    logger.info(model)
-
     # 3. 定义 Trainer
     trainer = Trainer(
+        args=args,
         logger=logger,
         model=model,
         train_dataset=train_dataset,
@@ -108,7 +113,7 @@ def main():
     )
 
     # 5. 测试并保存结果
-    trainer.best_model_path = '' # 测试模型的path
+    trainer.best_model_path = '.\models\ImprovedTransformerModel\ImprovedTransformerModel_20251225_212910.pt'
     trainer.test_and_save(save_dir=args.results_dir)
 
 if __name__ == "__main__":

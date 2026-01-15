@@ -1,10 +1,41 @@
 ## model.py
 
 import math
+import numpy as np
 import torch
 import torch.nn as nn
 from torch.nn.utils.rnn import pack_padded_sequence
 import torch.nn.functional as F
+
+
+class EndToEndModel(nn.Module):
+    def __init__(self, original_model, feature_mean, feature_std, label_mean, label_std):
+        super(EndToEndModel, self).__init__()
+        self.backbone = original_model
+
+        # 【关键点】使用 register_buffer 将均值和方差注册为模型的一部分
+        # 这样它们会作为常量 (Constant) 存入 ONNX，而不是作为输入节点
+        self.register_buffer('feature_mean', feature_mean)
+        self.register_buffer('feature_std', feature_std)
+        self.register_buffer('label_mean', label_mean)
+        self.register_buffer('label_std', label_std)
+
+    def forward(self, sequences, masks):
+        # 1. 模型原始推理 (输出是归一化的)
+        print('shape', sequences.shape, self.feature_mean.shape, self.feature_std.shape, self.label_mean.shape, self.label_std.shape)
+        normalized_sequence = (sequences - self.feature_mean) / self.feature_std
+        normalized_output = self.backbone(normalized_sequence, masks)
+        print('shape2', [i.shape for i in normalized_output])
+
+        # 2. 模型内进行反归一化
+        # 公式: 真实值 = 归一化值 * 方差 + 均值
+        real_output_xyz = normalized_output[0] * self.label_std[:,:3] + self.label_mean[:,:3]
+        real_output_var = normalized_output[1] * self.label_std[:,:3]
+        real_output_time = normalized_output[2] * self.label_std[:,3] + self.label_mean[:,3]
+
+        return real_output_xyz, real_output_var, real_output_time, normalized_output[3]
+
+
 
 class LSTMRegressor(nn.Module):
     def __init__(self, input_dim=63, hidden_dim=128, num_layers=2, bidirectional=True, drop=0.5):
@@ -514,11 +545,11 @@ class TransformerModel(nn.Module):
 
 
 class ImprovedTransformerModel(nn.Module):
-    def __init__(self, seq_len=50, num_points=21, d_model=1024, nhead=4, num_layers=4, point_dim=3):
+    def __init__(self, seq_len=100, num_points=22, d_model=1024, nhead=4, num_layers=4, point_dim=3):
         super().__init__()
         self.name = 'ImprovedTransformerModel'
         self.num_points = num_points
-        self.special_indices = [i for i in range(17 * 3, 21 * 3)]
+        self.special_indices = [i for i in range(17 * 3, 22 * 3)]
         self.input_dim = num_points * point_dim
         self.special_input_dim = len(self.special_indices)
         self.d_model = d_model
@@ -529,12 +560,13 @@ class ImprovedTransformerModel(nn.Module):
         #     torch.randn(1, 1, self.num_special_points * self.pe_dim_per_point)
         # )
 
+        # fixed_point_pe = self._create_fixed_point_pe()  # 调用新的生成函数
+        # # 注册为 buffer，它不可训练，但会随模型 state_dict 一起保存和加载
+        # self.register_buffer('fixed_point_pe', fixed_point_pe)
+
         self.pos_encoder = PositionalEncoding(d_model, dropout=0.1, max_len=seq_len)
 
-        # self.pos_embedding = nn.Embedding(seq_len, d_model)
-        # self.pos_dropout = nn.Dropout(0.1)
-
-        # combined_input_dim = self.special_input_dim + self.num_special_points * self.pe_dim_per_point  # 12 + 16 = 28
+        # self.special_input_dim = self.special_input_dim + self.num_special_points * self.pe_dim_per_point  # 12 + 16 = 28
 
         # 特殊点的输入映射
         self.input_fc_special = nn.Sequential(
@@ -548,17 +580,51 @@ class ImprovedTransformerModel(nn.Module):
         encoder_layer_special = nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead, batch_first=True)
         self.transformer_special = nn.TransformerEncoder(encoder_layer_special, num_layers=num_layers)
 
-        self.fusion_mlp = nn.Sequential(
+        self.xyz_mlp = nn.Sequential(
             nn.Linear(d_model, d_model // 2),
             nn.ReLU(),
-            nn.Linear(d_model // 2, point_dim)
+            nn.Linear(d_model // 2, point_dim),
         )
 
-        self.time_mlp = nn.Sequential(  # 新增 time_consuming 分支
+        self.xyz_var_mlp = nn.Sequential(
             nn.Linear(d_model, d_model // 2),
             nn.ReLU(),
-            nn.Linear(d_model // 2, 1)  # 输出标量
+            nn.Linear(d_model // 2, point_dim),
         )
+
+        self.time_mlp = nn.Sequential(
+            nn.Linear(d_model, d_model // 2),
+            nn.ReLU(),
+            nn.Linear(d_model // 2, 1),
+        )
+
+        self.direction_mlp = nn.Sequential(
+            nn.Linear(d_model, d_model // 2),
+            nn.ReLU(),
+            nn.Linear(d_model // 2, 2),
+        )
+
+    def _create_fixed_point_pe(self):
+        # 这里的逻辑是为每个特殊点 (self.num_special_points) 生成一个固定的编码
+        # 假设 special_indices 对应 4 个点 (17, 18, 19, 20)，即 num_special_points = 4
+        # 每个点的 PE 维度是 2 (pe_dim_per_point = 2)
+
+        # 1. 创建位置索引 (0, 1, 2, 3)
+        position_indices = torch.arange(self.num_special_points, dtype=torch.float)
+
+        # 2. 生成 sin/cos 编码 (类似 Transformer 的 PE)
+        # 示例：使用维度 0 和 1
+        div_term = torch.exp(
+            torch.arange(0, self.pe_dim_per_point, 2).float() * (-np.log(10000.0) / self.pe_dim_per_point))
+
+        # 初始化 [num_special_points, pe_dim_per_point]
+        pe = torch.zeros(self.num_special_points, self.pe_dim_per_point)
+        pe[:, 0] = torch.sin(position_indices * div_term)
+        pe[:, 1] = torch.cos(position_indices * div_term)
+
+        # 展平并调整形状: [1, 1, num_special_points * pe_dim_per_point]
+        pe = pe.view(1, 1, -1)
+        return pe
 
     def forward(self, x, mask):
         B, T, _ = x.shape
@@ -566,7 +632,8 @@ class ImprovedTransformerModel(nn.Module):
         special_x = x[:, :, self.special_indices]  # (B, T, )
 
         # point_pe_broadcast = self.point_pe_embedding.repeat(B, T, 1)
-        #
+        # point_pe_broadcast = self.fixed_point_pe.repeat(B, T, 1)  # B, T, D_pe
+        # 
         # special_x = torch.cat([special_x, point_pe_broadcast], dim=-1)
 
         special_proj = self.input_fc_special(special_x)  # (B, T, d_model)
@@ -583,10 +650,12 @@ class ImprovedTransformerModel(nn.Module):
         out_special = self.transformer_special(special_proj, src_key_padding_mask=~mask)
         final = out_special[:, -1, :]  # (B, d_model)
 
-        output = self.fusion_mlp(final)  # (B, 2)
+        output = self.xyz_mlp(final)  # (B, 2)
+        output_var = self.xyz_var_mlp(final)
         output_time = self.time_mlp(final).squeeze(1)  # (B,)
+        output_direction = self.direction_mlp(final)
 
-        return output, output_time
+        return output, output_var, output_time, output_direction
 
 
 class PositionalEncoding(nn.Module):

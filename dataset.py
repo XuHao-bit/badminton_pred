@@ -31,10 +31,11 @@ def parse_sample_file(file_path: str) -> Dict:
     drop_frame_str, drop_xyz_str = last_line.split(":")
     drop_frame = int(drop_frame_str)
     drop_xyz = np.array(list(map(float, drop_xyz_str.split(","))), dtype=np.float32)
-    if drop_xyz[0] < 0 or drop_xyz[0] > 670 or drop_xyz[1] < -305 or drop_xyz[1] > 305 or abs(drop_xyz[2]) > 10:
-        print(file_path)
+    if drop_xyz[0] < -10 or drop_xyz[0] > 680 or drop_xyz[1] < -320 or drop_xyz[1] > 320 or abs(drop_xyz[2]) > 10:
+        print(file_path, drop_xyz)
         return None
     # print(drop_frame, drop_xyz)
+    drop_xyz[2] = 0.0
 
     frame_ids = []
     frames = []
@@ -42,10 +43,33 @@ def parse_sample_file(file_path: str) -> Dict:
         fid_str, coords_str = ln.split(":")
         fid = int(fid_str)
         coords = np.array(list(map(float, coords_str.split(","))), dtype=np.float32)
-        if len(coords) < 63:
+        if len(coords) < 66:
             print(file_path, fid)
-        if len(coords) != 63:
-            coords = coords[:63]
+        if len(coords) != 66:
+            coords = coords[:66]
+
+        # ================== 新增：球拍几何合法性检查 (NumPy版) ==================
+        # 提取末 4 个关键点 (4, 3)
+        # 假设最后12个数是球拍的4个点
+        pts = coords[-15:-3].reshape(4, 3)
+        P1, P2, P3, P4 = pts[0], pts[1], pts[2], pts[3]
+
+        # 规则 1：四面体体积
+        # matrix shape: (3, 3)
+        mat = np.stack([P2 - P1, P3 - P1, P4 - P1])
+        v = np.abs(np.linalg.det(mat)) / 6.0
+        bad_volume = (v > 2000)
+
+        # 规则 2：长轴 / 短轴长度
+        short_axis = np.linalg.norm(P2 - P1)
+        long_axis = np.linalg.norm(P4 - P3)
+        bad_axis = (short_axis > 100) or (long_axis > 100)
+
+        # 若满足任意规则 → 将该帧数据全置为 0
+        if bad_volume or bad_axis:
+            coords[:] = 0.0
+        # ======================================================================
+
         frame_ids.append(fid)
         frames.append(coords)
 
@@ -72,7 +96,7 @@ def load_all_samples(folder: str, suffix='.txt') -> List[Dict]:
             print(f"跳过 {fn}: {e}")
     return samples
 
-def collate_fn_dynamic(batch):
+def collate_fn_dynamic(batch, max_len = None):
     """
     batch: list of tuples (seq, length, label_xyz, label_time)
     seq: (seq_len_i, feature_dim)
@@ -90,12 +114,13 @@ def collate_fn_dynamic(batch):
     seqs, lengths, xyzs, times, filename, dirs = zip(*batch)
     lengths = torch.tensor(lengths, dtype=torch.long)
     feature_dim = seqs[0].shape[1]
-    max_len = max(lengths)
+    if max_len == None:
+        max_len = max(lengths)
 
     seqs_padded = []
     masks = []
 
-    for seq, l in zip(seqs, lengths):
+    for seq, l, fn in zip(seqs, lengths, filename):
         pad_len = max_len - l
         if pad_len > 0:
             pad = torch.zeros(pad_len, feature_dim, dtype=seq.dtype)
@@ -105,6 +130,43 @@ def collate_fn_dynamic(batch):
         mask = torch.ones(max_len, dtype=torch.bool)  # 先全设为True（默认填充）
         mask[:pad_len] = False  # 将前pad_l个位置设为False
 
+        original_seq_data = seq_padded[pad_len:]  # (l_item, feature_dim)
+
+        # 检查原始数据中的每一行是否全为零
+        is_all_zero_row = original_seq_data.abs().sum(dim=1).eq(0)
+
+        # 将原始数据中全零行的 mask 对应位置设置为 False
+        if is_all_zero_row.any():
+            mask[pad_len:][is_all_zero_row] = False
+
+        # 新增：按帧检测异常关键点 → mask=False
+        # for i in range(max_len - l, max_len):  # 只检查真实帧（后面的 padding 不检查）
+        #     frame = seq_padded[i]  # (63,)
+        #
+        #     # 提取末 4 个关键点（三维）
+        #     pts = frame[-12:].view(4, 3)  # 最后12维组成4个点
+        #
+        #     P1, P2, P3, P4 = pts[0], pts[1], pts[2], pts[3]
+        #
+        #     # ----- 规则 1：四面体体积 -----
+        #     v = torch.abs(torch.det(torch.stack([
+        #         P2 - P1,
+        #         P3 - P1,
+        #         P4 - P1
+        #     ]))) / 6.0
+        #
+        #     bad_volume = (v > 2000)
+        #
+        #     # ----- 规则 2：长轴 / 短轴长度 -----
+        #     short_axis = torch.norm(P2 - P1)
+        #     long_axis = torch.norm(P4 - P3)
+        #
+        #     bad_axis = (short_axis > 100) or (long_axis > 100)
+        #
+        #     # 若满足任意规则 → mask=False
+        #     if bad_volume or bad_axis:
+        #         mask[i] = False
+
         seqs_padded.append(seq_padded)
         masks.append(mask)
 
@@ -112,7 +174,7 @@ def collate_fn_dynamic(batch):
     masks = torch.stack(masks, dim=0)              # (B, max_len)
     xyzs = torch.stack(xyzs, dim=0)                # (B,3)
     times = torch.stack(times, dim=0)              # (B,)
-    dirs = torch.stack(dirs, dim=0)                 # (B, 2)
+    dirs = torch.stack(dirs, dim=0)                # (B, 2)
 
     return seqs_padded, lengths, masks, xyzs, times, dirs, filename
 
@@ -216,7 +278,7 @@ def down_sampling(samples: List[Dict],
     return expanded_samples
 
 class BadmintonDataset(Dataset):
-    def __init__(self, samples: List[Dict], min_len: int = 10, max_len: int = 50,
+    def __init__(self, samples: List[Dict], min_len: int = 10, max_len: int = 50, min_offset_len=0, max_offset_len=20, temp_test_offset=-1,
                  mode: str = "train",
                  num_subsamples: int = 5, # not use
                  feature_mean=None, feature_std=None,
@@ -227,6 +289,9 @@ class BadmintonDataset(Dataset):
         self.samples = samples
         self.min_len = min_len
         self.max_len = max_len
+        self.min_offset_len = min_offset_len
+        self.max_offset_len = max_offset_len
+        self.temp_test_offset = temp_test_offset
         self.mode = mode
         self.aug_method = aug_method
 
@@ -240,7 +305,7 @@ class BadmintonDataset(Dataset):
             self.feature_std = all_features.std(axis=0, keepdims=True) + 1e-6
             self.label_mean = all_labels.mean(axis=0, keepdims=True)
             self.label_std = all_labels.std(axis=0, keepdims=True) + 1e-6
-            self.noise_std_x = self.label_std[0][0]/5 # 176.7 * 0.1（可后续调为1/8或1/5倍）
+            self.noise_std_x = self.label_std[0][0]/5  # 176.7 * 0.1（可后续调为1/8或1/5倍）
             self.noise_std_y = self.label_std[0][1]/5  # 181.86 * 0.1
 
             # resampling_v2, 每个样本copy几份
@@ -268,15 +333,21 @@ class BadmintonDataset(Dataset):
             seq_len = np.random.randint(self.min_len, self.max_len + 1)
             if seq_len > total_len:
                 seq_len = total_len  # 防止长度超过原始序列
-            # end_idx = np.random.randint(seq_len - 1, total_len)
-            end_idx = total_len - 1
+            offset = random.randint(self.min_offset_len, self.max_offset_len)
+            end_idx = total_len - 1 - offset
             start_idx = end_idx - seq_len + 1
         else:
             # 测试时：从结尾取固定长度（或保持原始逻辑）
             total_len = len(total_frames)
-            seq_len = self.max_len
-            start_idx = total_len - seq_len  # 从结尾取
-            end_idx = total_len - 1
+            seq_len = min(total_len, self.max_len)
+            if self.temp_test_offset < 0:
+                offset = random.randint(self.min_offset_len, self.max_offset_len)
+            else:
+                offset = self.temp_test_offset
+            end_idx = total_len - 1 - offset
+            start_idx = end_idx - seq_len + 1
+            # end_idx = total_len - 1
+            # start_idx = end_idx - seq_len + 1
 
         # 截取子样本
         seq = torch.from_numpy(total_frames[start_idx:end_idx+1]).float()
@@ -343,7 +414,7 @@ class BadmintonDataset(Dataset):
         #     # 给XY轴标签加噪声（Z轴若无需增强可跳过）
         #     label_xyz_raw[0] += noise_x  # X轴加噪声
         #     label_xyz_raw[1] += noise_y  # Y轴加噪声
-        
+
         label_all = torch.cat([label_xyz_raw, label_time_raw.unsqueeze(0)], dim=0)
         label_all = (label_all - torch.from_numpy(self.label_mean).squeeze(0).float()) / \
                     torch.from_numpy(self.label_std).squeeze(0).float()
@@ -352,23 +423,23 @@ class BadmintonDataset(Dataset):
         label_time_norm = label_all[3]
 
         return seq, torch.tensor(length, dtype=torch.long), label_xyz_norm, label_time_norm, file_name, direction_unit
-    
+
     def get_norm_stats(self):
         return self.feature_mean, self.feature_std, self.label_mean, self.label_std
-    
 
-if __name__ == "__main__": 
-    # path = '/home/zhaoxuhao/badminton_xh/20250809_Seq_data/20250809_150058---008377.txt' 
-    import argparse 
-    parser = argparse.ArgumentParser() 
-    # parser.add_argument('--data_folder', type=str, default='/home/zhaoxuhao/badminton_xh/20250809_Seq_data') 
+
+if __name__ == "__main__":
+    # path = '/home/zhaoxuhao/badminton_xh/20250809_Seq_data/20250809_150058---008377.txt'
+    import argparse
+    parser = argparse.ArgumentParser()
+    # parser.add_argument('--data_folder', type=str, default='/home/zhaoxuhao/badminton_xh/20250809_Seq_data')
     parser.add_argument('--data_folder', type=str, default='/home/zhaoxuhao/badminton_xh/20250809_Seq_data_v2/20250809_Seq_data')
-    args = parser.parse_args() 
-    # 加载所有样本 
-    samples = load_all_samples(args.data_folder) 
-    print(f"一共加载到 {len(samples)} 个样本") # print(samples) 
-    # 构建 Dataset 
-    dataset = BadmintonDataset(samples, mode='train', min_len=10, max_len=50) 
+    args = parser.parse_args()
+    # 加载所有样本
+    samples = load_all_samples(args.data_folder)
+    print(f"一共加载到 {len(samples)} 个样本") # print(samples)
+    # 构建 Dataset
+    dataset = BadmintonDataset(samples, mode='train', min_len=10, max_len=50)
     feature_mean, feature_std, label_mean, label_std = dataset.get_norm_stats()
     test_dataset = BadmintonDataset(samples, mode='test', min_len=10, max_len=50,
                                feature_mean=feature_mean, feature_std=feature_std,
@@ -382,21 +453,21 @@ if __name__ == "__main__":
     print(f"标签 mean: {label_mean.shape}, 值: {label_mean[0]}")
     print(f"标签 std : {label_std.shape}, 值: {label_std[0]}")
 
-    # 随机取几个看看 
-    for i in range(5): 
-        xyz_seq, seq_len, label_xyz, label_t = dataset[i] 
-        print(f"样本 {i}:") 
-        print(f" 输入序列 shape: {xyz_seq.shape}") # (L, 63), L ∈ [40, 50] 
-        print(f" seq len: {seq_len}") 
-        print(f" 落点 label xyz: {label_xyz.numpy()}") 
+    # 随机取几个看看
+    for i in range(5):
+        xyz_seq, seq_len, label_xyz, label_t = dataset[i]
+        print(f"样本 {i}:")
+        print(f" 输入序列 shape: {xyz_seq.shape}") # (L, 63), L ∈ [40, 50]
+        print(f" seq len: {seq_len}")
+        print(f" 落点 label xyz: {label_xyz.numpy()}")
         print(f" 飞行时间 label: {label_t.item()}")
 
     print("\ntest data")
-    # 随机取几个看看 
-    for i in range(5): 
-        xyz_seq, seq_len, label_xyz, label_t = test_dataset[i] 
-        print(f"样本 {i}:") 
-        print(f" 输入序列 shape: {xyz_seq.shape}") # (L, 63), L ∈ [40, 50] 
-        print(f" seq len: {seq_len}") 
-        print(f" 落点 label xyz: {label_xyz.numpy()}") 
+    # 随机取几个看看
+    for i in range(5):
+        xyz_seq, seq_len, label_xyz, label_t = test_dataset[i]
+        print(f"样本 {i}:")
+        print(f" 输入序列 shape: {xyz_seq.shape}") # (L, 63), L ∈ [40, 50]
+        print(f" seq len: {seq_len}")
+        print(f" 落点 label xyz: {label_xyz.numpy()}")
         print(f" 飞行时间 label: {label_t.item()}")
