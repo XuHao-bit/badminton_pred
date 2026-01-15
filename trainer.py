@@ -30,6 +30,26 @@ def nll_loss(pred_mu, pred_log_var, target, lambda_nll=1.0):
     return loss.mean()
 
 
+
+def nll_loss(pred_mu, pred_log_var, target, lambda_nll=1.0):
+    # 钳位 log_var 以避免数值不稳定 (可选，但推荐)
+    pred_log_var = torch.clamp(pred_log_var, min=-10.0, max=10.0)
+
+    # 方差 sigma^2
+    pred_var = torch.exp(pred_log_var)
+
+    # 损失项 1: log(sigma^2)
+    loss_term_1 = lambda_nll * pred_log_var
+
+    # 损失项 2: (y - mu)^2 / sigma^2 (带权重的 MSE)
+    loss_term_2 = torch.square(target - pred_mu) / pred_var
+
+    # 整体损失
+    loss = 0.5 * (loss_term_1 + loss_term_2)
+
+    return loss.mean()
+
+
 def set_seed(seed=42):
     random.seed(seed)
     np.random.seed(seed)
