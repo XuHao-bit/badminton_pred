@@ -7,6 +7,36 @@ import torch.nn as nn
 from torch.nn.utils.rnn import pack_padded_sequence
 import torch.nn.functional as F
 
+
+class EndToEndModel(nn.Module):
+    def __init__(self, original_model, feature_mean, feature_std, label_mean, label_std):
+        super(EndToEndModel, self).__init__()
+        self.backbone = original_model
+
+        # 【关键点】使用 register_buffer 将均值和方差注册为模型的一部分
+        # 这样它们会作为常量 (Constant) 存入 ONNX，而不是作为输入节点
+        self.register_buffer('feature_mean', feature_mean)
+        self.register_buffer('feature_std', feature_std)
+        self.register_buffer('label_mean', label_mean)
+        self.register_buffer('label_std', label_std)
+
+    def forward(self, sequences, masks):
+        # 1. 模型原始推理 (输出是归一化的)
+        print('shape', sequences.shape, self.feature_mean.shape, self.feature_std.shape, self.label_mean.shape, self.label_std.shape)
+        normalized_sequence = (sequences - self.feature_mean) / self.feature_std
+        normalized_output = self.backbone(normalized_sequence, masks)
+        print('shape2', [i.shape for i in normalized_output])
+
+        # 2. 模型内进行反归一化
+        # 公式: 真实值 = 归一化值 * 方差 + 均值
+        real_output_xyz = normalized_output[0] * self.label_std[:,:3] + self.label_mean[:,:3]
+        real_output_var = normalized_output[1] * self.label_std[:,:3]
+        real_output_time = normalized_output[2] * self.label_std[:,3] + self.label_mean[:,3]
+
+        return real_output_xyz, real_output_var, real_output_time, normalized_output[3]
+
+
+
 class LSTMRegressor(nn.Module):
     def __init__(self, input_dim=63, hidden_dim=128, num_layers=2, bidirectional=True, drop=0.5):
         super().__init__()

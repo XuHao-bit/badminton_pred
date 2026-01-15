@@ -8,6 +8,27 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 import datetime
 from dataset import collate_fn_dynamic  # 你的动态 padding collate_fn
+from model import EndToEndModel
+
+
+def nll_loss(pred_mu, pred_log_var, target, lambda_nll=1.0):
+    # 钳位 log_var 以避免数值不稳定 (可选，但推荐)
+    pred_log_var = torch.clamp(pred_log_var, min=-10.0, max=10.0)
+
+    # 方差 sigma^2
+    pred_var = torch.exp(pred_log_var)
+
+    # 损失项 1: log(sigma^2)
+    loss_term_1 = lambda_nll * pred_log_var
+
+    # 损失项 2: (y - mu)^2 / sigma^2 (带权重的 MSE)
+    loss_term_2 = torch.square(target - pred_mu) / pred_var
+
+    # 整体损失
+    loss = 0.5 * (loss_term_1 + loss_term_2)
+
+    return loss.mean()
+
 
 
 def nll_loss(pred_mu, pred_log_var, target, lambda_nll=1.0):
@@ -128,18 +149,25 @@ class Trainer:
                 torch.save(self.model.state_dict(), self.best_model_path)
 
                 # save model as onnx
-                # self.model.to('cpu')
-                # dummy_seq = torch.randn(1, 50, 63)
-                # dummy_mask = torch.ones(1, 50, dtype=torch.bool)
-                # torch.onnx.export(
-                #     self.model,
-                #     (dummy_seq, dummy_mask),
-                #     self.best_model_path.replace('.pt', '.onnx'),
-                #     input_names=['seq', 'mask'],
-                #     output_names=['output'],
-                #     dynamic_axes={"seq": {0: "batch_size", 1: "seq_len", 2: "feature_dim"}, "mask": {0: "batch_size", 1: "seq_len"}}
-                # )
-                # self.model.to(self.device)
+                self.model.to('cpu')
+                dummy_seq = torch.randn(1, 50, 66)
+                dummy_mask = torch.ones(1, 50, dtype=torch.bool)
+
+                model_with_norm = EndToEndModel(self.model, torch.tensor(self.train_loader.dataset.feature_mean),
+                                                torch.tensor(self.train_loader.dataset.feature_std),
+                                                torch.tensor(self.train_loader.dataset.label_mean),
+                                                torch.tensor(self.train_loader.dataset.label_std))
+                model_with_norm.eval()
+
+                torch.onnx.export(
+                    model_with_norm,
+                    (dummy_seq, dummy_mask),
+                    self.best_model_path.replace('.pt', '.onnx'),
+                    input_names=['seq', 'mask'],
+                    output_names=['xyz', 'var', 'time', 'direction'],
+                    dynamic_axes={"seq": {0: "batch_size", 1: "seq_len", 2: "feature_dim"}, "mask": {0: "batch_size", 1: "seq_len"}}
+                )
+                self.model.to(self.device)
 
                 self.logger.info(f"✅ Saved best model to {self.best_model_path}")
 
@@ -304,6 +332,9 @@ class Trainer:
                         labels_list.append(labels)
                         filenames_list.append(fn)
 
+                        # sample_seqs = seqs.clone().detach()[0].unsqueeze(0)
+                        # sample_masks = masks.clone().detach()[0].unsqueeze(0)
+
             # 将本轮 MC 采样的所有 batch 预测结果合并
             mc_mu_xyz_all.append(np.concatenate(mu_xyz_iter, axis=0))
             mc_log_var_xyz_all.append(np.concatenate(log_var_xyz_iter, axis=0))
@@ -401,11 +432,18 @@ class Trainer:
             "file_name": filenames,
         })
 
+        # input_names = ["sequences", "masks"]
+        # output_names = ["landing_point", "time", "direction"]
+        # print('input shape', sample_seqs.shape, sample_masks.shape)
+        # torch_out = torch.onnx.export(self.model, (sample_seqs, sample_masks), "model.onnx", export_params=True, verbose=True,
+        #                               input_names=input_names, output_names=output_names)
+
         # 拼接文件名
         os.makedirs(save_dir, exist_ok=True)
         filename = f"{self.logger.time}_mc{mc_samples}.csv"
         csv_file = os.path.join(save_dir, filename)
         df.to_csv(csv_file, index=False)
         self.logger.info(f"📄 Saved test results to {csv_file}")
+
         return df
     

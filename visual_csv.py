@@ -585,7 +585,7 @@ def visual_shot_categories(df):
 
 if __name__ == '__main__':
     from main import set_seed
-    data_folder = '../data/data_1217_infer_ext5'
+    data_folder = '../badminton-dataset/data_1217_infer_ext5'
     
     set_seed(seed=42)
     result_dir = "./results/ImprovedTransformerModel/20251226_014735_mc20.csv"
@@ -595,7 +595,8 @@ if __name__ == '__main__':
     # 按照落地时间label取前30%快的球
     # quantile_30 = df['label_time'].quantile(0.3)
     # print(f'\n\nTop30s 落地时间： {quantile_30}帧')
-    df = df.loc[df['label_time'] <= 245].copy()
+
+    # df = df.loc[df['label_time'] <= 245].copy()
 
     visual_df('ImprovedTransformerModel', '20251226_000032', df)
 
