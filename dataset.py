@@ -278,7 +278,7 @@ def down_sampling(samples: List[Dict],
     return expanded_samples
 
 class BadmintonDataset(Dataset):
-    def __init__(self, samples: List[Dict], min_len: int = 10, max_len: int = 50,
+    def __init__(self, samples: List[Dict], min_len: int = 10, max_len: int = 50, min_offset_len=0, max_offset_len=20, temp_test_offset=-1,
                  mode: str = "train",
                  num_subsamples: int = 5, # not use
                  feature_mean=None, feature_std=None,
@@ -289,6 +289,9 @@ class BadmintonDataset(Dataset):
         self.samples = samples
         self.min_len = min_len
         self.max_len = max_len
+        self.min_offset_len = min_offset_len
+        self.max_offset_len = max_offset_len
+        self.temp_test_offset = temp_test_offset
         self.mode = mode
         self.aug_method = aug_method
 
@@ -330,15 +333,21 @@ class BadmintonDataset(Dataset):
             seq_len = np.random.randint(self.min_len, self.max_len + 1)
             if seq_len > total_len:
                 seq_len = total_len  # 防止长度超过原始序列
-            # end_idx = np.random.randint(seq_len - 1, total_len)
-            end_idx = total_len - 1
+            offset = random.randint(self.min_offset_len, self.max_offset_len)
+            end_idx = total_len - 1 - offset
             start_idx = end_idx - seq_len + 1
         else:
             # 测试时：从结尾取固定长度（或保持原始逻辑）
             total_len = len(total_frames)
             seq_len = min(total_len, self.max_len)
-            end_idx = total_len - 1
+            if self.temp_test_offset < 0:
+                offset = random.randint(self.min_offset_len, self.max_offset_len)
+            else:
+                offset = self.temp_test_offset
+            end_idx = total_len - 1 - offset
             start_idx = end_idx - seq_len + 1
+            # end_idx = total_len - 1
+            # start_idx = end_idx - seq_len + 1
 
         # 截取子样本
         seq = torch.from_numpy(total_frames[start_idx:end_idx+1]).float()
