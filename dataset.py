@@ -10,7 +10,7 @@ from torch.utils.data import Dataset
 from torch.nn.utils.rnn import pad_sequence
 
 
-def parse_sample_file(file_path: str) -> Dict:
+def parse_sample_file(file_path: str, point_num=21) -> Dict:
     """
     解析单个样本文件，保留全部帧信息（不裁切）
     返回结构：{
@@ -43,15 +43,15 @@ def parse_sample_file(file_path: str) -> Dict:
         fid_str, coords_str = ln.split(":")
         fid = int(fid_str)
         coords = np.array(list(map(float, coords_str.split(","))), dtype=np.float32)
-        if len(coords) < 66:
+        if len(coords) < point_num * 3:
             print(file_path, fid)
-        if len(coords) != 66:
-            coords = coords[:66]
+        if len(coords) != point_num * 3:
+            coords = coords[:point_num*3]
 
         # ================== 新增：球拍几何合法性检查 (NumPy版) ==================
         # 提取末 4 个关键点 (4, 3)
         # 假设最后12个数是球拍的4个点
-        pts = coords[-15:-3].reshape(4, 3)
+        pts = coords[17*3:21*3].reshape(4, 3)
         P1, P2, P3, P4 = pts[0], pts[1], pts[2], pts[3]
 
         # 规则 1：四面体体积
@@ -67,7 +67,7 @@ def parse_sample_file(file_path: str) -> Dict:
 
         # 若满足任意规则 → 将该帧数据全置为 0
         if bad_volume or bad_axis:
-            coords[:] = 0.0
+            coords[:] = np.nan
         # ======================================================================
 
         frame_ids.append(fid)
@@ -82,14 +82,14 @@ def parse_sample_file(file_path: str) -> Dict:
     }
 
 
-def load_all_samples(folder: str, suffix='.txt') -> List[Dict]:
+def load_all_samples(folder: str, point_num=21, suffix='.txt') -> List[Dict]:
     samples = []
     for fn in sorted(os.listdir(folder)):
         if not fn.endswith(suffix):
             continue
         path = os.path.join(folder, fn)
         try:
-            s = parse_sample_file(path)
+            s = parse_sample_file(path, point_num)
             if s:
                 samples.append(s)
         except Exception as e:
@@ -111,7 +111,7 @@ def collate_fn_dynamic(batch, max_len = None):
         times: (B,)
         mask: (B, max_len)
     """
-    seqs, lengths, xyzs, times, filename, dirs = zip(*batch)
+    seqs, lengths, xyzs, times, dirs, filename = zip(*batch)
     lengths = torch.tensor(lengths, dtype=torch.long)
     feature_dim = seqs[0].shape[1]
     if max_len == None:
@@ -130,42 +130,10 @@ def collate_fn_dynamic(batch, max_len = None):
         mask = torch.ones(max_len, dtype=torch.bool)  # 先全设为True（默认填充）
         mask[:pad_len] = False  # 将前pad_l个位置设为False
 
-        original_seq_data = seq_padded[pad_len:]  # (l_item, feature_dim)
-
-        # 检查原始数据中的每一行是否全为零
-        is_all_zero_row = original_seq_data.abs().sum(dim=1).eq(0)
-
-        # 将原始数据中全零行的 mask 对应位置设置为 False
-        if is_all_zero_row.any():
-            mask[pad_len:][is_all_zero_row] = False
-
-        # 新增：按帧检测异常关键点 → mask=False
-        # for i in range(max_len - l, max_len):  # 只检查真实帧（后面的 padding 不检查）
-        #     frame = seq_padded[i]  # (63,)
-        #
-        #     # 提取末 4 个关键点（三维）
-        #     pts = frame[-12:].view(4, 3)  # 最后12维组成4个点
-        #
-        #     P1, P2, P3, P4 = pts[0], pts[1], pts[2], pts[3]
-        #
-        #     # ----- 规则 1：四面体体积 -----
-        #     v = torch.abs(torch.det(torch.stack([
-        #         P2 - P1,
-        #         P3 - P1,
-        #         P4 - P1
-        #     ]))) / 6.0
-        #
-        #     bad_volume = (v > 2000)
-        #
-        #     # ----- 规则 2：长轴 / 短轴长度 -----
-        #     short_axis = torch.norm(P2 - P1)
-        #     long_axis = torch.norm(P4 - P3)
-        #
-        #     bad_axis = (short_axis > 100) or (long_axis > 100)
-        #
-        #     # 若满足任意规则 → mask=False
-        #     if bad_volume or bad_axis:
-        #         mask[i] = False
+        is_bad_frame = torch.isnan(seq_padded).any(dim=1)  # (max_len,)
+        if is_bad_frame.any():
+            mask[is_bad_frame] = False
+            seq_padded = torch.nan_to_num(seq_padded, nan=0.0)
 
         seqs_padded.append(seq_padded)
         masks.append(mask)
@@ -301,10 +269,10 @@ class BadmintonDataset(Dataset):
             all_features = np.concatenate([s["frames"] for s in samples], axis=0)
             all_labels = np.stack([np.concatenate([s["label_xyz"], [s["drop_frame"] - s["frame_ids"][-1]]])
                                     for s in samples], axis=0)
-            self.feature_mean = all_features.mean(axis=0, keepdims=True)
-            self.feature_std = all_features.std(axis=0, keepdims=True) + 1e-6
-            self.label_mean = all_labels.mean(axis=0, keepdims=True)
-            self.label_std = all_labels.std(axis=0, keepdims=True) + 1e-6
+            self.feature_mean = np.nanmean(all_features, axis=0, keepdims=True)
+            self.feature_std = np.nanstd(all_features, axis=0, keepdims=True) + 1e-6
+            self.label_mean = np.nanmean(all_labels, axis=0, keepdims=True)
+            self.label_std = np.nanstd(all_labels, axis=0, keepdims=True) + 1e-6
             self.noise_std_x = self.label_std[0][0]/5  # 176.7 * 0.1（可后续调为1/8或1/5倍）
             self.noise_std_y = self.label_std[0][1]/5  # 181.86 * 0.1
 
@@ -422,7 +390,7 @@ class BadmintonDataset(Dataset):
         label_xyz_norm = label_all[:3]
         label_time_norm = label_all[3]
 
-        return seq, torch.tensor(length, dtype=torch.long), label_xyz_norm, label_time_norm, file_name, direction_unit
+        return seq, torch.tensor(length, dtype=torch.long), label_xyz_norm, label_time_norm, direction_unit, file_name
 
     def get_norm_stats(self):
         return self.feature_mean, self.feature_std, self.label_mean, self.label_std

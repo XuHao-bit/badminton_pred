@@ -219,9 +219,7 @@ def visual_df(name, log_time, df):
 
 def visual_uncertainty(df, threshold=75):
     print("\n======== 可视化不确定性估计 ========")
-    # df['std_euclidean'] = np.sqrt(df['std_total_x'] ** 2 + df['std_total_y'] ** 2 + df['std_total_z'] ** 2)
-    # df['std_euclidean'] = np.sqrt(df['std_epistemic_x'] ** 2 + df['std_epistemic_y'] ** 2 + df['std_epistemic_z'] ** 2)
-    df['std_euclidean'] = np.sqrt(df['std_aleatoric_x'] ** 2 + df['std_aleatoric_y'] ** 2 + df['std_aleatoric_z'] ** 2)
+    df['std_euclidean'] = np.sqrt(df['std_x'] ** 2 + df['std_y'] ** 2 + df['std_z'] ** 2)
     plt.figure(figsize=(10, 6))
     sns.scatterplot(x='err_euclidean', y='std_euclidean', data=df, alpha=0.6, s=20)
     plt.title(f'Predictive Error vs. Predictive Uncertainty')
@@ -229,9 +227,7 @@ def visual_uncertainty(df, threshold=75):
     plt.ylabel(f'Predictive Uncertainty')
     plt.ylim(0, 225)
     plt.grid(True, linestyle='--', alpha=0.6)
-    plt.savefig('visualization/Error-std aleatoric Correlation', bbox_inches='tight')
-    # plt.savefig('visualization/Error-std epistemic Correlation')
-    # plt.savefig('visualization/Error-std Correlation')
+    plt.savefig('visualization/Error-std Correlation', bbox_inches='tight')
     print(f"\n成功保存预测误差-不确定性的散点图")
 
     df_less_1m = df[df['err_euclidean'] <= 100]
@@ -588,8 +584,7 @@ if __name__ == '__main__':
     data_folder = '../badminton-dataset/data_1217_infer_ext5'
     
     set_seed(seed=42)
-    result_dir = "./results/ImprovedTransformerModel/20251226_014735_mc20.csv"
-    # result_dir = "./results/ImprovedTransformerModel/20251226_103131_mc20.csv"
+    result_dir = "./results/ImprovedTransformerModel/20260116_002929.csv"
     df = pd.read_csv(result_dir)
 
     # 按照落地时间label取前30%快的球

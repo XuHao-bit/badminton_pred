@@ -22,10 +22,10 @@ class EndToEndModel(nn.Module):
 
     def forward(self, sequences, masks):
         # 1. 模型原始推理 (输出是归一化的)
-        print('shape', sequences.shape, self.feature_mean.shape, self.feature_std.shape, self.label_mean.shape, self.label_std.shape)
+        # print('shape', sequences.shape, self.feature_mean.shape, self.feature_std.shape, self.label_mean.shape, self.label_std.shape)
         normalized_sequence = (sequences - self.feature_mean) / self.feature_std
         normalized_output = self.backbone(normalized_sequence, masks)
-        print('shape2', [i.shape for i in normalized_output])
+        # print('shape2', [i.shape for i in normalized_output])
 
         # 2. 模型内进行反归一化
         # 公式: 真实值 = 归一化值 * 方差 + 均值
@@ -545,11 +545,11 @@ class TransformerModel(nn.Module):
 
 
 class ImprovedTransformerModel(nn.Module):
-    def __init__(self, seq_len=100, num_points=22, d_model=1024, nhead=4, num_layers=4, point_dim=3):
+    def __init__(self, seq_len=100, num_points=21, d_model=1024, nhead=4, num_layers=4, point_dim=3):
         super().__init__()
         self.name = 'ImprovedTransformerModel'
         self.num_points = num_points
-        self.special_indices = [i for i in range(17 * 3, 22 * 3)]
+        self.special_indices = [i for i in range(17 * 3, num_points * 3)]
         self.input_dim = num_points * point_dim
         self.special_input_dim = len(self.special_indices)
         self.d_model = d_model

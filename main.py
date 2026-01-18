@@ -46,7 +46,7 @@ def main():
     
     parser = argparse.ArgumentParser()
     # parser.add_argument('--data_folder', type=str, default='/home/zhaoxuhao/badminton_xh/20250809_Seq_data_v2/20250809_Seq_data')
-    parser.add_argument('--data_folder', type=str, default='../badminton-dataset/data_1217_ball_ext5')
+    parser.add_argument('--data_folder', type=str, default='../data/data_1217_ball_ext5')
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=2e-5)
     parser.add_argument("--epochs", type=int, default=100)
@@ -55,11 +55,12 @@ def main():
     # parser.add_argument("--bidirectional", action="store_true", default=True)
     parser.add_argument("--model_dir", type=str, default="./models")
     parser.add_argument("--results_dir", type=str, default="./results")
+    parser.add_argument("--points_num", type=int, default=21)
     parser.add_argument("--min_len", type=int, default=10)
     parser.add_argument("--max_len", type=int, default=50)
     parser.add_argument("--min_offset_len", type=int, default=5)
     parser.add_argument("--max_offset_len", type=int, default=25)
-    parser.add_argument("--temp_test_offset", type=int, default=-1)
+    parser.add_argument("--temp_test_offset", type=int, default=5)
     parser.add_argument("--num_subsamples", type=int, default=5)
     parser.add_argument("--delta", type=float, default=1.0)  # for huber loss (xyz loss)
     parser.add_argument("--lambda_time", type=float, default=0.1)  # for huber loss (time loss)
@@ -74,14 +75,14 @@ def main():
     # model = ImprovedLSTMRegressor()
     # model = SimplifiedLSTMRegressor()
     # model = TransformerModel()
-    model = ImprovedTransformerModel(seq_len=args.max_len)
+    model = ImprovedTransformerModel(seq_len=args.max_len, num_points=args.points_num)
 
     # Init Logger
     logger = setup_logger(start_time, log_dir=f"./logs/{model.name}")
     logger.time = start_time
     args.model_dir = os.path.join(args.model_dir, model.name)
     args.results_dir = os.path.join(args.results_dir, model.name)
-    
+
     logger.info("========== Model 信息 ==========")
     logger.info(model)
 
@@ -92,7 +93,7 @@ def main():
     # 1. 加载数据
     set_seed()
     logger.info("========== 📂 Loading samples ==========")
-    samples = load_all_samples(args.data_folder)
+    samples = load_all_samples(args.data_folder, args.points_num)
     random.shuffle(samples)
     logger.info(f"一共加载到 {len(samples)} 个样本")
 
