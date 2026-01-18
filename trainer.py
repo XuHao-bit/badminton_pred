@@ -149,25 +149,25 @@ class Trainer:
                 torch.save(self.model.state_dict(), self.best_model_path)
 
                 # save model as onnx
-                self.model.to('cpu')
-                dummy_seq = torch.randn(1, 50, 66)
-                dummy_mask = torch.ones(1, 50, dtype=torch.bool)
-
-                model_with_norm = EndToEndModel(self.model, torch.tensor(self.train_loader.dataset.feature_mean),
-                                                torch.tensor(self.train_loader.dataset.feature_std),
-                                                torch.tensor(self.train_loader.dataset.label_mean),
-                                                torch.tensor(self.train_loader.dataset.label_std))
-                model_with_norm.eval()
-
-                torch.onnx.export(
-                    model_with_norm,
-                    (dummy_seq, dummy_mask),
-                    self.best_model_path.replace('.pt', '.onnx'),
-                    input_names=['seq', 'mask'],
-                    output_names=['xyz', 'var', 'time', 'direction'],
-                    dynamic_axes={"seq": {0: "batch_size", 1: "seq_len", 2: "feature_dim"}, "mask": {0: "batch_size", 1: "seq_len"}}
-                )
-                self.model.to(self.device)
+                # self.model.to('cpu')
+                # dummy_seq = torch.randn(1, 50, 66)
+                # dummy_mask = torch.ones(1, 50, dtype=torch.bool)
+                #
+                # model_with_norm = EndToEndModel(self.model, torch.tensor(self.train_loader.dataset.feature_mean),
+                #                                 torch.tensor(self.train_loader.dataset.feature_std),
+                #                                 torch.tensor(self.train_loader.dataset.label_mean),
+                #                                 torch.tensor(self.train_loader.dataset.label_std))
+                # model_with_norm.eval()
+                #
+                # torch.onnx.export(
+                #     model_with_norm,
+                #     (dummy_seq, dummy_mask),
+                #     self.best_model_path.replace('.pt', '.onnx'),
+                #     input_names=['seq', 'mask'],
+                #     output_names=['xyz', 'var', 'time', 'direction'],
+                #     dynamic_axes={"seq": {0: "batch_size", 1: "seq_len", 2: "feature_dim"}, "mask": {0: "batch_size", 1: "seq_len"}}
+                # )
+                # self.model.to(self.device)
 
                 self.logger.info(f"✅ Saved best model to {self.best_model_path}")
 
@@ -281,147 +281,102 @@ class Trainer:
     #     self.logger.info(f"📄 Saved test results to {csv_file}")
     #     return df
 
-    def test_and_save(self, save_dir="./results", mc_samples=20):
+    def test_and_save(self, save_dir="./results"):
         # 加载最佳模型参数
         best_param = torch.load(self.best_model_path)
         self.model.load_state_dict(best_param)
         self.model.to(self.device)
 
-        # 启用 Dropout 层的训练模式以激活 MC Dropout
-        self.model.train()
+        # === 修改点 1：切换到 eval 模式 (关闭 Dropout，进行确定性推理) ===
+        self.model.eval()
 
-        # 用于存储 T 次 MC 采样的结果
-        mc_mu_xyz_all = []  # 存储 T 次采样的 XYZ 均值 (mu)
-        mc_log_var_xyz_all = []  # 存储 T 次采样的 XYZ Log-方差 (log(sigma^2_A))
-        mc_time_all = []  # 存储 T 次采样的 Time 均值
-        mc_dir_all = []  # 存储 T 次采样的 Direction 均值
+        # 用于存储预测结果
+        preds_xyz_list = []
+        preds_log_var_list = []  # 存储预测的 log_var
+        preds_time_list = []
+        preds_dir_list = []
 
         labels_list, filenames_list = [], []
 
+        # 获取归一化参数 (保持原有逻辑)
         label_mean = self.test_loader.dataset.label_mean
         label_std = self.test_loader.dataset.label_std
         std_xyz = label_std[0][:3]
         std_xyz_sq = std_xyz ** 2  # 用于方差反归一化
 
-        # 🎯 外层循环：MC 采样 T 次
-        for mc_iter in tqdm(range(mc_samples), desc="MC Dropout Sampling (Total Uncertainty)"):
-            mu_xyz_iter, log_var_xyz_iter, time_iter, dir_iter = [], [], [], []
+        with torch.no_grad():
+            for batch in tqdm(self.test_loader, desc="Testing (Single Pass)"):
+                seqs, lengths, masks, labels_xyz, labels_time, labels_direction = [
+                    b.to(self.device) for b in batch[:-1]
+                ]
 
-            with torch.no_grad():
-                for batch in self.test_loader:
-                    seqs, lengths, masks, labels_xyz, labels_time, labels_direction = [
-                        b.to(self.device) for b in batch[:-1]
-                    ]
+                # 运行模型获取预测
+                output = self.model(seqs, masks)
+                pred_xyz_mu, pred_xyz_log_var, pred_time, pred_direction = output
 
-                    # 运行模型获取预测
-                    output = self.model(seqs, masks)
-                    pred_xyz_mu, pred_xyz_log_var, pred_time, pred_direction = output
+                # 收集结果
+                preds_xyz_list.append(pred_xyz_mu.cpu().numpy())
+                preds_log_var_list.append(pred_xyz_log_var.cpu().numpy())
+                preds_time_list.append(pred_time.cpu().numpy())
+                preds_dir_list.append(pred_direction.cpu().numpy())
 
-                    # 收集本次采样的结果
-                    mu_xyz_iter.append(pred_xyz_mu.cpu().numpy())
-                    log_var_xyz_iter.append(pred_xyz_log_var.cpu().numpy())
-                    time_iter.append(pred_time.cpu().numpy())
-                    dir_iter.append(pred_direction.cpu().numpy())
+                # 收集标签和文件名
+                fn = batch[-1]
+                labels = torch.cat(
+                    [labels_xyz, labels_time.unsqueeze(1), labels_direction], dim=-1
+                ).cpu().numpy()
+                labels_list.append(labels)
+                filenames_list.append(fn)
 
-                    # 仅在第一次 MC 采样时收集标签和文件名
-                    if mc_iter == 0:
-                        fn = batch[-1]
-                        labels = torch.cat(
-                            [labels_xyz, labels_time.unsqueeze(1), labels_direction], dim=-1
-                        ).cpu().numpy()
-                        labels_list.append(labels)
-                        filenames_list.append(fn)
-
-                        # sample_seqs = seqs.clone().detach()[0].unsqueeze(0)
-                        # sample_masks = masks.clone().detach()[0].unsqueeze(0)
-
-            # 将本轮 MC 采样的所有 batch 预测结果合并
-            mc_mu_xyz_all.append(np.concatenate(mu_xyz_iter, axis=0))
-            mc_log_var_xyz_all.append(np.concatenate(log_var_xyz_iter, axis=0))
-            mc_time_all.append(np.concatenate(time_iter, axis=0))
-            mc_dir_all.append(np.concatenate(dir_iter, axis=0))
-
-        # 将 MC 样本的结果堆叠成张量: [MC_SAMPLES, Total_Samples, Features]
-        mc_mu_xyz_tensor = np.stack(mc_mu_xyz_all, axis=0)
-        mc_log_var_xyz_tensor = np.stack(mc_log_var_xyz_all, axis=0)
-        mc_time_tensor = np.stack(mc_time_all, axis=0)
-        mc_dir_tensor = np.stack(mc_dir_all, axis=0)
+        # 堆叠结果
+        preds_xyz = np.concatenate(preds_xyz_list, axis=0)
+        preds_log_var = np.concatenate(preds_log_var_list, axis=0)
+        preds_time = np.concatenate(preds_time_list, axis=0)
+        preds_dir = np.concatenate(preds_dir_list, axis=0)
 
         labels = np.concatenate(labels_list, axis=0)
         filenames = [fn for fnames in filenames_list for fn in fnames]
 
-        # ==========================================================
-        # 1. 均值预测 (Final Prediction)
-        # ==========================================================
-        final_preds_mu_xyz = np.mean(mc_mu_xyz_tensor, axis=0)
-        final_preds_mu_time = np.mean(mc_time_tensor, axis=0)
-        final_preds_mu_dir = np.mean(mc_dir_tensor, axis=0)
-
         # 拼接 XYZT 均值
-        final_preds_mu_xyzt = np.concatenate(
-            [final_preds_mu_xyz, final_preds_mu_time[:, np.newaxis]], axis=1
+        preds_xyzt = np.concatenate(
+            [preds_xyz, preds_time[:, np.newaxis]], axis=1
         )
 
         # ==========================================================
-        # 2. Epistemic Uncertainty (模型不确定性)
-        # Var_E = Var(mu_t)
+        # 1. 不确定性计算 (仅计算 Aleatoric)
+        # Var = exp(log_var)
         # ==========================================================
-        # 注意: 只需要对 XYZ (前3维) 计算 Epistemic
-        var_epistemic_xyz_norm = np.var(mc_mu_xyz_tensor, axis=0)
-
-        # 3. Aleatoric Uncertainty (数据不确定性)
-        # Var_A = Mean(exp(log_var_t))
-        # ==========================================================
-        var_aleatoric_xyz_norm = np.mean(np.exp(mc_log_var_xyz_tensor), axis=0)
-
-        # 4. Total Uncertainty (总体不确定性)
-        # Var_T = Var_E + Var_A
-        # ==========================================================
-        var_total_xyz_norm = var_epistemic_xyz_norm + var_aleatoric_xyz_norm
+        var_xyz_norm = np.exp(preds_log_var)
 
         # ==========================================================
-        # 5. 反归一化 (针对 XYZ)
+        # 2. 反归一化 (保持原有逻辑不变)
         # ==========================================================
         # 均值反归一化 (前 4 列)
-        final_preds_mu_xyzt_denorm = final_preds_mu_xyzt * label_std + label_mean
+        preds_xyzt_denorm = preds_xyzt * label_std + label_mean
         labels_denorm = labels[:, :4] * label_std + label_mean
 
         # 方差反归一化: Var_denorm = Var_norm * std_label^2
-        var_epistemic_xyz_denorm = var_epistemic_xyz_norm * std_xyz_sq
-        var_aleatoric_xyz_denorm = var_aleatoric_xyz_norm * std_xyz_sq
-        var_total_xyz_denorm = var_total_xyz_norm * std_xyz_sq
+        var_xyz_denorm = var_xyz_norm * std_xyz_sq
 
         # 转化为标准差 (Std = sqrt(Var))
-        std_epistemic_xyz = np.sqrt(var_epistemic_xyz_denorm)
-        std_aleatoric_xyz = np.sqrt(var_aleatoric_xyz_denorm)
-        std_total_xyz = np.sqrt(var_total_xyz_denorm)
+        std_xyz_denorm = np.sqrt(var_xyz_denorm)
 
         # ==========================================================
-        # 6. 保存到 DataFrame
+        # 3. 保存到 DataFrame
         # ==========================================================
 
         df = pd.DataFrame({
-            "pred_x": final_preds_mu_xyzt_denorm[:, 0],
-            "pred_y": final_preds_mu_xyzt_denorm[:, 1],
-            "pred_z": final_preds_mu_xyzt_denorm[:, 2],
-            "pred_time": final_preds_mu_xyzt_denorm[:, 3],
-            "pred_dir_x": final_preds_mu_dir[:, 0],
-            "pred_dir_y": final_preds_mu_dir[:, 1],
+            "pred_x": preds_xyzt_denorm[:, 0],
+            "pred_y": preds_xyzt_denorm[:, 1],
+            "pred_z": preds_xyzt_denorm[:, 2],
+            "pred_time": preds_xyzt_denorm[:, 3],
+            "pred_dir_x": preds_dir[:, 0],
+            "pred_dir_y": preds_dir[:, 1],
 
-            # 🎯 Epistemic Uncertainty (模型不确定性)
-            "std_epistemic_x": std_epistemic_xyz[:, 0],
-            "std_epistemic_y": std_epistemic_xyz[:, 1],
-            "std_epistemic_z": std_epistemic_xyz[:, 2],
-
-            # 🎯 Aleatoric Uncertainty (数据不确定性)
-            "std_aleatoric_x": std_aleatoric_xyz[:, 0],
-            "std_aleatoric_y": std_aleatoric_xyz[:, 1],
-            "std_aleatoric_z": std_aleatoric_xyz[:, 2],
-
-            # 🎯 Total Uncertainty (总体不确定性)
-            "std_total_x": std_total_xyz[:, 0],
-            "std_total_y": std_total_xyz[:, 1],
-            "std_total_z": std_total_xyz[:, 2],
+            # 🎯 Uncertainty (这里只剩下模型直接预测的数据不确定性)
+            "std_x": std_xyz_denorm[:, 0],
+            "std_y": std_xyz_denorm[:, 1],
+            "std_z": std_xyz_denorm[:, 2],
 
             "label_x": labels_denorm[:, 0],
             "label_y": labels_denorm[:, 1],
@@ -432,15 +387,9 @@ class Trainer:
             "file_name": filenames,
         })
 
-        # input_names = ["sequences", "masks"]
-        # output_names = ["landing_point", "time", "direction"]
-        # print('input shape', sample_seqs.shape, sample_masks.shape)
-        # torch_out = torch.onnx.export(self.model, (sample_seqs, sample_masks), "model.onnx", export_params=True, verbose=True,
-        #                               input_names=input_names, output_names=output_names)
-
         # 拼接文件名
         os.makedirs(save_dir, exist_ok=True)
-        filename = f"{self.logger.time}_mc{mc_samples}.csv"
+        filename = f"{self.logger.time}.csv"
         csv_file = os.path.join(save_dir, filename)
         df.to_csv(csv_file, index=False)
         self.logger.info(f"📄 Saved test results to {csv_file}")

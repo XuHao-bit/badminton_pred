@@ -1,0 +1,198 @@
+2025-12-29 16:02:50,576 - INFO - ========== Model 信息 ==========
+2025-12-29 16:02:50,576 - INFO - ImprovedTransformerModel(
+  (pos_encoder): PositionalEncoding(
+    (dropout): Dropout(p=0.1, inplace=False)
+  )
+  (input_fc_special): Sequential(
+    (0): Linear(in_features=15, out_features=1024, bias=True)
+  )
+  (transformer_special): TransformerEncoder(
+    (layers): ModuleList(
+      (0-3): 4 x TransformerEncoderLayer(
+        (self_attn): MultiheadAttention(
+          (out_proj): NonDynamicallyQuantizableLinear(in_features=1024, out_features=1024, bias=True)
+        )
+        (linear1): Linear(in_features=1024, out_features=2048, bias=True)
+        (dropout): Dropout(p=0.1, inplace=False)
+        (linear2): Linear(in_features=2048, out_features=1024, bias=True)
+        (norm1): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (norm2): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+        (dropout1): Dropout(p=0.1, inplace=False)
+        (dropout2): Dropout(p=0.1, inplace=False)
+      )
+    )
+  )
+  (xyz_mlp): Sequential(
+    (0): Linear(in_features=1024, out_features=512, bias=True)
+    (1): ReLU()
+    (2): Linear(in_features=512, out_features=3, bias=True)
+  )
+  (xyz_var_mlp): Sequential(
+    (0): Linear(in_features=1024, out_features=512, bias=True)
+    (1): ReLU()
+    (2): Linear(in_features=512, out_features=3, bias=True)
+  )
+  (time_mlp): Sequential(
+    (0): Linear(in_features=1024, out_features=512, bias=True)
+    (1): ReLU()
+    (2): Linear(in_features=512, out_features=1, bias=True)
+  )
+  (direction_mlp): Sequential(
+    (0): Linear(in_features=1024, out_features=512, bias=True)
+    (1): ReLU()
+    (2): Linear(in_features=512, out_features=2, bias=True)
+  )
+)
+2025-12-29 16:02:50,577 - INFO - ========== Config 信息 ==========
+2025-12-29 16:02:50,577 - INFO - --data_folder: ../data/data_1217_infer_ball_ext5
+2025-12-29 16:02:50,577 - INFO - --batch_size: 32
+2025-12-29 16:02:50,577 - INFO - --lr: 2e-05
+2025-12-29 16:02:50,577 - INFO - --epochs: 100
+2025-12-29 16:02:50,577 - INFO - --model_dir: ./models\ImprovedTransformerModel
+2025-12-29 16:02:50,577 - INFO - --results_dir: ./results\ImprovedTransformerModel
+2025-12-29 16:02:50,577 - INFO - --min_len: 10
+2025-12-29 16:02:50,577 - INFO - --max_len: 50
+2025-12-29 16:02:50,577 - INFO - --num_subsamples: 5
+2025-12-29 16:02:50,577 - INFO - --delta: 1.0
+2025-12-29 16:02:50,577 - INFO - --lambda_time: 0.1
+2025-12-29 16:02:50,577 - INFO - --lambda_direction: 0.1
+2025-12-29 16:02:50,577 - INFO - --aug_method: None
+2025-12-29 16:02:50,578 - INFO - ========== 📂 Loading samples ==========
+2025-12-29 16:03:12,345 - INFO - 一共加载到 1824 个样本
+2025-12-29 16:03:12,390 - INFO - ========== Training Data 统计信息 ==========
+2025-12-29 16:03:12,390 - INFO - 训练样本数量: 7295
+2025-12-29 16:03:12,390 - INFO - 测试样本数量: 365
+2025-12-29 16:03:12,390 - INFO - 特征 mean: (1, 66), 示例前5个维度: [1090.2988    -6.39785  154.28705 1091.6836    -8.78372]
+2025-12-29 16:03:12,390 - INFO - 特征 std : (1, 66), 示例前5个维度: [127.73517  113.93461   14.121516 127.490364 113.88599 ]
+2025-12-29 16:03:12,391 - INFO - 标签 mean: (1, 4), 值: [254.42751989  -4.72816264   0.         283.81151474]
+2025-12-29 16:03:12,391 - INFO - 标签 std : (1, 4), 值: [1.61856297e+02 1.80666812e+02 1.00000000e-06 8.77897569e+01]
+2025-12-29 16:03:12,413 - INFO - Using device: cuda
+2025-12-29 16:03:24,796 - INFO - Epoch 1: [Train] Loss = -0.4198|	[Valid] XYZ Loss = -0.8641| Time Loss = 0.9576| Dir Loss = 0.6850|	XYZ Err(L2 Distance): 213.2445|	XY Err: 213.2445|	Time Err: 72.7609|	Direction Err: 67.8485
+2025-12-29 16:03:24,908 - INFO - ✅ Saved best model to ./models\ImprovedTransformerModel\ImprovedTransformerModel_20251229_160250.pt
+2025-12-29 16:03:34,317 - INFO - Epoch 2: [Train] Loss = -0.6529|	[Valid] XYZ Loss = -1.0161| Time Loss = 0.8555| Dir Loss = 0.6614|	XYZ Err(L2 Distance): 213.2441|	XY Err: 213.2441|	Time Err: 67.3124|	Direction Err: 66.1685
+2025-12-29 16:03:34,449 - INFO - ✅ Saved best model to ./models\ImprovedTransformerModel\ImprovedTransformerModel_20251229_160250.pt
+2025-12-29 16:03:43,137 - INFO - Epoch 3: [Train] Loss = -0.7407|	[Valid] XYZ Loss = -1.0774| Time Loss = 0.8293| Dir Loss = 0.6508|	XYZ Err(L2 Distance): 211.0298|	XY Err: 211.0298|	Time Err: 65.1050|	Direction Err: 65.0476
+2025-12-29 16:03:43,281 - INFO - ✅ Saved best model to ./models\ImprovedTransformerModel\ImprovedTransformerModel_20251229_160250.pt
+2025-12-29 16:03:52,957 - INFO - Epoch 4: [Train] Loss = -0.8302|	[Valid] XYZ Loss = -1.1954| Time Loss = 0.8105| Dir Loss = 0.7505|	XYZ Err(L2 Distance): 210.4681|	XY Err: 210.4681|	Time Err: 63.6629|	Direction Err: 71.9643
+2025-12-29 16:03:53,082 - INFO - ✅ Saved best model to ./models\ImprovedTransformerModel\ImprovedTransformerModel_20251229_160250.pt
+2025-12-29 16:04:02,870 - INFO - Epoch 5: [Train] Loss = -0.8776|	[Valid] XYZ Loss = -1.2999| Time Loss = 0.7738| Dir Loss = 0.6801|	XYZ Err(L2 Distance): 210.0532|	XY Err: 210.0532|	Time Err: 62.7940|	Direction Err: 67.1881
+2025-12-29 16:04:02,999 - INFO - ✅ Saved best model to ./models\ImprovedTransformerModel\ImprovedTransformerModel_20251229_160250.pt
+2025-12-29 16:04:11,902 - INFO - Epoch 6: [Train] Loss = -0.9551|	[Valid] XYZ Loss = -1.2032| Time Loss = 0.7109| Dir Loss = 0.6138|	XYZ Err(L2 Distance): 210.7643|	XY Err: 210.7643|	Time Err: 59.4252|	Direction Err: 62.4186
+2025-12-29 16:04:21,441 - INFO - Epoch 7: [Train] Loss = -1.0089|	[Valid] XYZ Loss = -1.3591| Time Loss = 0.5993| Dir Loss = 0.6414|	XYZ Err(L2 Distance): 208.2943|	XY Err: 208.2943|	Time Err: 53.0123|	Direction Err: 64.6204
+2025-12-29 16:04:21,592 - INFO - ✅ Saved best model to ./models\ImprovedTransformerModel\ImprovedTransformerModel_20251229_160250.pt
+2025-12-29 16:04:31,387 - INFO - Epoch 8: [Train] Loss = -1.0582|	[Valid] XYZ Loss = -1.3972| Time Loss = 0.5043| Dir Loss = 0.6072|	XYZ Err(L2 Distance): 206.9282|	XY Err: 206.9282|	Time Err: 48.4551|	Direction Err: 62.2524
+2025-12-29 16:04:31,522 - INFO - ✅ Saved best model to ./models\ImprovedTransformerModel\ImprovedTransformerModel_20251229_160250.pt
+2025-12-29 16:04:41,197 - INFO - Epoch 9: [Train] Loss = -1.1519|	[Valid] XYZ Loss = -1.4781| Time Loss = 0.3705| Dir Loss = 0.5297|	XYZ Err(L2 Distance): 201.2167|	XY Err: 201.2167|	Time Err: 40.1521|	Direction Err: 57.3382
+2025-12-29 16:04:41,325 - INFO - ✅ Saved best model to ./models\ImprovedTransformerModel\ImprovedTransformerModel_20251229_160250.pt
+2025-12-29 16:04:49,917 - INFO - Epoch 10: [Train] Loss = -1.2334|	[Valid] XYZ Loss = -1.4820| Time Loss = 0.2939| Dir Loss = 0.4637|	XYZ Err(L2 Distance): 192.1818|	XY Err: 192.1818|	Time Err: 35.0706|	Direction Err: 53.3635
+2025-12-29 16:04:50,041 - INFO - ✅ Saved best model to ./models\ImprovedTransformerModel\ImprovedTransformerModel_20251229_160250.pt
+2025-12-29 16:04:58,744 - INFO - Epoch 11: [Train] Loss = -1.3079|	[Valid] XYZ Loss = -1.5617| Time Loss = 0.3278| Dir Loss = 0.4102|	XYZ Err(L2 Distance): 183.2829|	XY Err: 183.2829|	Time Err: 37.0292|	Direction Err: 49.3081
+2025-12-29 16:04:58,874 - INFO - ✅ Saved best model to ./models\ImprovedTransformerModel\ImprovedTransformerModel_20251229_160250.pt
+2025-12-29 16:05:08,342 - INFO - Epoch 12: [Train] Loss = -1.3721|	[Valid] XYZ Loss = -1.4742| Time Loss = 0.2363| Dir Loss = 0.4050|	XYZ Err(L2 Distance): 182.3894|	XY Err: 182.3894|	Time Err: 28.2278|	Direction Err: 48.9345
+2025-12-29 16:05:17,993 - INFO - Epoch 13: [Train] Loss = -1.4193|	[Valid] XYZ Loss = -1.6415| Time Loss = 0.1910| Dir Loss = 0.3887|	XYZ Err(L2 Distance): 176.9332|	XY Err: 176.9332|	Time Err: 27.2365|	Direction Err: 47.9679
+2025-12-29 16:05:18,124 - INFO - ✅ Saved best model to ./models\ImprovedTransformerModel\ImprovedTransformerModel_20251229_160250.pt
+2025-12-29 16:05:26,342 - INFO - Epoch 14: [Train] Loss = -1.4712|	[Valid] XYZ Loss = -1.6179| Time Loss = 0.2393| Dir Loss = 0.4079|	XYZ Err(L2 Distance): 177.6062|	XY Err: 177.6062|	Time Err: 30.9628|	Direction Err: 47.7448
+2025-12-29 16:05:35,853 - INFO - Epoch 15: [Train] Loss = -1.4997|	[Valid] XYZ Loss = -1.6446| Time Loss = 0.1374| Dir Loss = 0.3546|	XYZ Err(L2 Distance): 171.2656|	XY Err: 171.2656|	Time Err: 22.9270|	Direction Err: 44.4978
+2025-12-29 16:05:35,998 - INFO - ✅ Saved best model to ./models\ImprovedTransformerModel\ImprovedTransformerModel_20251229_160250.pt
+2025-12-29 16:05:45,704 - INFO - Epoch 16: [Train] Loss = -1.5489|	[Valid] XYZ Loss = -1.7080| Time Loss = 0.1578| Dir Loss = 0.3290|	XYZ Err(L2 Distance): 164.9209|	XY Err: 164.9209|	Time Err: 25.6721|	Direction Err: 40.4034
+2025-12-29 16:05:45,842 - INFO - ✅ Saved best model to ./models\ImprovedTransformerModel\ImprovedTransformerModel_20251229_160250.pt
+2025-12-29 16:05:55,487 - INFO - Epoch 17: [Train] Loss = -1.5816|	[Valid] XYZ Loss = -1.7368| Time Loss = 0.1772| Dir Loss = 0.2412|	XYZ Err(L2 Distance): 145.1441|	XY Err: 145.1441|	Time Err: 27.2347|	Direction Err: 32.3790
+2025-12-29 16:05:55,612 - INFO - ✅ Saved best model to ./models\ImprovedTransformerModel\ImprovedTransformerModel_20251229_160250.pt
+2025-12-29 16:06:04,161 - INFO - Epoch 18: [Train] Loss = -1.6329|	[Valid] XYZ Loss = -1.7927| Time Loss = 0.1585| Dir Loss = 0.2644|	XYZ Err(L2 Distance): 132.8723|	XY Err: 132.8723|	Time Err: 25.1562|	Direction Err: 33.7849
+2025-12-29 16:06:04,284 - INFO - ✅ Saved best model to ./models\ImprovedTransformerModel\ImprovedTransformerModel_20251229_160250.pt
+2025-12-29 16:06:13,691 - INFO - Epoch 19: [Train] Loss = -1.6936|	[Valid] XYZ Loss = -1.7999| Time Loss = 0.1590| Dir Loss = 0.2105|	XYZ Err(L2 Distance): 115.1393|	XY Err: 115.1393|	Time Err: 26.3240|	Direction Err: 28.2232
+2025-12-29 16:06:13,841 - INFO - ✅ Saved best model to ./models\ImprovedTransformerModel\ImprovedTransformerModel_20251229_160250.pt
+2025-12-29 16:06:23,434 - INFO - Epoch 20: [Train] Loss = -1.7356|	[Valid] XYZ Loss = -1.8464| Time Loss = 0.1351| Dir Loss = 0.1587|	XYZ Err(L2 Distance): 104.9660|	XY Err: 104.9660|	Time Err: 23.4465|	Direction Err: 23.6782
+2025-12-29 16:06:23,570 - INFO - ✅ Saved best model to ./models\ImprovedTransformerModel\ImprovedTransformerModel_20251229_160250.pt
+2025-12-29 16:06:33,133 - INFO - Epoch 21: [Train] Loss = -1.7785|	[Valid] XYZ Loss = -1.9597| Time Loss = 0.1525| Dir Loss = 0.1319|	XYZ Err(L2 Distance): 90.6619|	XY Err: 90.6619|	Time Err: 24.5882|	Direction Err: 20.6977
+2025-12-29 16:06:33,269 - INFO - ✅ Saved best model to ./models\ImprovedTransformerModel\ImprovedTransformerModel_20251229_160250.pt
+2025-12-29 16:06:42,986 - INFO - Epoch 22: [Train] Loss = -1.8324|	[Valid] XYZ Loss = -1.9319| Time Loss = 0.1528| Dir Loss = 0.1143|	XYZ Err(L2 Distance): 85.0412|	XY Err: 85.0412|	Time Err: 24.8727|	Direction Err: 19.0403
+2025-12-29 16:06:52,139 - INFO - Epoch 23: [Train] Loss = -1.8771|	[Valid] XYZ Loss = -1.9228| Time Loss = 0.1390| Dir Loss = 0.1444|	XYZ Err(L2 Distance): 96.5329|	XY Err: 96.5329|	Time Err: 23.6454|	Direction Err: 22.4916
+2025-12-29 16:07:01,723 - INFO - Epoch 24: [Train] Loss = -1.8983|	[Valid] XYZ Loss = -2.0320| Time Loss = 0.1439| Dir Loss = 0.1255|	XYZ Err(L2 Distance): 84.8602|	XY Err: 84.8602|	Time Err: 24.0153|	Direction Err: 20.1423
+2025-12-29 16:07:01,855 - INFO - ✅ Saved best model to ./models\ImprovedTransformerModel\ImprovedTransformerModel_20251229_160250.pt
+2025-12-29 16:07:11,048 - INFO - Epoch 25: [Train] Loss = -1.9366|	[Valid] XYZ Loss = -1.9650| Time Loss = 0.1703| Dir Loss = 0.1118|	XYZ Err(L2 Distance): 85.5056|	XY Err: 85.5056|	Time Err: 26.5095|	Direction Err: 18.9728
+2025-12-29 16:07:19,348 - INFO - Epoch 26: [Train] Loss = -1.9695|	[Valid] XYZ Loss = -2.0746| Time Loss = 0.1474| Dir Loss = 0.0911|	XYZ Err(L2 Distance): 75.7129|	XY Err: 75.7129|	Time Err: 24.0166|	Direction Err: 16.9020
+2025-12-29 16:07:19,475 - INFO - ✅ Saved best model to ./models\ImprovedTransformerModel\ImprovedTransformerModel_20251229_160250.pt
+2025-12-29 16:07:29,046 - INFO - Epoch 27: [Train] Loss = -2.0213|	[Valid] XYZ Loss = -2.0582| Time Loss = 0.1261| Dir Loss = 0.0739|	XYZ Err(L2 Distance): 71.2333|	XY Err: 71.2333|	Time Err: 22.2329|	Direction Err: 14.7920
+2025-12-29 16:07:38,754 - INFO - Epoch 28: [Train] Loss = -2.0237|	[Valid] XYZ Loss = -2.0377| Time Loss = 0.1185| Dir Loss = 0.0941|	XYZ Err(L2 Distance): 79.8987|	XY Err: 79.8987|	Time Err: 21.5046|	Direction Err: 17.2634
+2025-12-29 16:07:47,893 - INFO - Epoch 29: [Train] Loss = -2.0711|	[Valid] XYZ Loss = -2.0707| Time Loss = 0.1262| Dir Loss = 0.1019|	XYZ Err(L2 Distance): 77.4970|	XY Err: 77.4970|	Time Err: 22.2922|	Direction Err: 18.2341
+2025-12-29 16:07:56,247 - INFO - Epoch 30: [Train] Loss = -2.0988|	[Valid] XYZ Loss = -2.1614| Time Loss = 0.1304| Dir Loss = 0.0600|	XYZ Err(L2 Distance): 63.7507|	XY Err: 63.7507|	Time Err: 22.4013|	Direction Err: 13.1767
+2025-12-29 16:07:56,374 - INFO - ✅ Saved best model to ./models\ImprovedTransformerModel\ImprovedTransformerModel_20251229_160250.pt
+2025-12-29 16:08:05,974 - INFO - Epoch 31: [Train] Loss = -2.1135|	[Valid] XYZ Loss = -2.1232| Time Loss = 0.1231| Dir Loss = 0.0615|	XYZ Err(L2 Distance): 63.2950|	XY Err: 63.2950|	Time Err: 21.8012|	Direction Err: 12.9624
+2025-12-29 16:08:15,835 - INFO - Epoch 32: [Train] Loss = -2.1138|	[Valid] XYZ Loss = -2.1848| Time Loss = 0.1464| Dir Loss = 0.0636|	XYZ Err(L2 Distance): 62.4768|	XY Err: 62.4768|	Time Err: 23.4637|	Direction Err: 13.2948
+2025-12-29 16:08:15,955 - INFO - ✅ Saved best model to ./models\ImprovedTransformerModel\ImprovedTransformerModel_20251229_160250.pt
+2025-12-29 16:08:24,297 - INFO - Epoch 33: [Train] Loss = -2.1348|	[Valid] XYZ Loss = -2.1980| Time Loss = 0.1328| Dir Loss = 0.0563|	XYZ Err(L2 Distance): 62.9987|	XY Err: 62.9987|	Time Err: 22.4985|	Direction Err: 13.0220
+2025-12-29 16:08:24,430 - INFO - ✅ Saved best model to ./models\ImprovedTransformerModel\ImprovedTransformerModel_20251229_160250.pt
+2025-12-29 16:08:33,338 - INFO - Epoch 34: [Train] Loss = -2.1524|	[Valid] XYZ Loss = -2.2177| Time Loss = 0.1341| Dir Loss = 0.0479|	XYZ Err(L2 Distance): 61.2178|	XY Err: 61.2178|	Time Err: 22.7499|	Direction Err: 12.1807
+2025-12-29 16:08:33,465 - INFO - ✅ Saved best model to ./models\ImprovedTransformerModel\ImprovedTransformerModel_20251229_160250.pt
+2025-12-29 16:08:42,993 - INFO - Epoch 35: [Train] Loss = -2.1634|	[Valid] XYZ Loss = -2.1227| Time Loss = 0.1104| Dir Loss = 0.0628|	XYZ Err(L2 Distance): 70.6205|	XY Err: 70.6205|	Time Err: 20.2281|	Direction Err: 14.5314
+2025-12-29 16:08:52,403 - INFO - Epoch 36: [Train] Loss = -2.1866|	[Valid] XYZ Loss = -2.0998| Time Loss = 0.1189| Dir Loss = 0.0719|	XYZ Err(L2 Distance): 68.2337|	XY Err: 68.2337|	Time Err: 20.8136|	Direction Err: 14.5825
+2025-12-29 16:09:00,868 - INFO - Epoch 37: [Train] Loss = -2.1801|	[Valid] XYZ Loss = -2.1885| Time Loss = 0.1132| Dir Loss = 0.0721|	XYZ Err(L2 Distance): 66.5410|	XY Err: 66.5410|	Time Err: 21.0491|	Direction Err: 14.5832
+2025-12-29 16:09:10,032 - INFO - Epoch 38: [Train] Loss = -2.1981|	[Valid] XYZ Loss = -2.1130| Time Loss = 0.1288| Dir Loss = 0.0557|	XYZ Err(L2 Distance): 65.0484|	XY Err: 65.0484|	Time Err: 21.2599|	Direction Err: 13.1978
+2025-12-29 16:09:19,456 - INFO - Epoch 39: [Train] Loss = -2.1951|	[Valid] XYZ Loss = -2.1021| Time Loss = 0.1205| Dir Loss = 0.0504|	XYZ Err(L2 Distance): 67.1152|	XY Err: 67.1152|	Time Err: 21.2254|	Direction Err: 13.3324
+2025-12-29 16:09:28,828 - INFO - Epoch 40: [Train] Loss = -2.2165|	[Valid] XYZ Loss = -2.1332| Time Loss = 0.1279| Dir Loss = 0.0482|	XYZ Err(L2 Distance): 60.0794|	XY Err: 60.0794|	Time Err: 22.5648|	Direction Err: 12.0124
+2025-12-29 16:09:37,341 - INFO - Epoch 41: [Train] Loss = -2.2246|	[Valid] XYZ Loss = -2.2298| Time Loss = 0.1022| Dir Loss = 0.0483|	XYZ Err(L2 Distance): 60.1595|	XY Err: 60.1595|	Time Err: 18.8957|	Direction Err: 11.9080
+2025-12-29 16:09:37,468 - INFO - ✅ Saved best model to ./models\ImprovedTransformerModel\ImprovedTransformerModel_20251229_160250.pt
+2025-12-29 16:09:46,901 - INFO - Epoch 42: [Train] Loss = -2.2368|	[Valid] XYZ Loss = -2.1856| Time Loss = 0.1138| Dir Loss = 0.0385|	XYZ Err(L2 Distance): 57.2542|	XY Err: 57.2542|	Time Err: 20.3122|	Direction Err: 11.2188
+2025-12-29 16:09:55,364 - INFO - Epoch 43: [Train] Loss = -2.2259|	[Valid] XYZ Loss = -2.1725| Time Loss = 0.1258| Dir Loss = 0.0413|	XYZ Err(L2 Distance): 59.2490|	XY Err: 59.2490|	Time Err: 21.1433|	Direction Err: 11.5986
+2025-12-29 16:10:01,332 - INFO - Epoch 44: [Train] Loss = -2.2449|	[Valid] XYZ Loss = -2.1261| Time Loss = 0.1119| Dir Loss = 0.0391|	XYZ Err(L2 Distance): 57.7907|	XY Err: 57.7907|	Time Err: 20.1653|	Direction Err: 11.1859
+2025-12-29 16:10:07,457 - INFO - Epoch 45: [Train] Loss = -2.2521|	[Valid] XYZ Loss = -2.2312| Time Loss = 0.1065| Dir Loss = 0.0430|	XYZ Err(L2 Distance): 56.9447|	XY Err: 56.9447|	Time Err: 19.5119|	Direction Err: 11.3144
+2025-12-29 16:10:07,561 - INFO - ✅ Saved best model to ./models\ImprovedTransformerModel\ImprovedTransformerModel_20251229_160250.pt
+2025-12-29 16:10:14,704 - INFO - Epoch 46: [Train] Loss = -2.2522|	[Valid] XYZ Loss = -2.1163| Time Loss = 0.1189| Dir Loss = 0.0494|	XYZ Err(L2 Distance): 60.0259|	XY Err: 60.0259|	Time Err: 20.4608|	Direction Err: 12.4070
+2025-12-29 16:10:21,895 - INFO - Epoch 47: [Train] Loss = -2.2745|	[Valid] XYZ Loss = -2.1728| Time Loss = 0.1130| Dir Loss = 0.0426|	XYZ Err(L2 Distance): 58.1446|	XY Err: 58.1446|	Time Err: 20.1656|	Direction Err: 11.4571
+2025-12-29 16:10:27,680 - INFO - Epoch 48: [Train] Loss = -2.2812|	[Valid] XYZ Loss = -2.1983| Time Loss = 0.1232| Dir Loss = 0.0421|	XYZ Err(L2 Distance): 57.9523|	XY Err: 57.9523|	Time Err: 21.0616|	Direction Err: 11.4335
+2025-12-29 16:10:34,118 - INFO - Epoch 49: [Train] Loss = -2.2920|	[Valid] XYZ Loss = -2.1639| Time Loss = 0.1312| Dir Loss = 0.0370|	XYZ Err(L2 Distance): 58.7292|	XY Err: 58.7292|	Time Err: 22.0624|	Direction Err: 10.9935
+2025-12-29 16:10:41,223 - INFO - Epoch 50: [Train] Loss = -2.2867|	[Valid] XYZ Loss = -2.2125| Time Loss = 0.1412| Dir Loss = 0.0391|	XYZ Err(L2 Distance): 57.5394|	XY Err: 57.5394|	Time Err: 23.4273|	Direction Err: 11.3247
+2025-12-29 16:10:48,155 - INFO - Epoch 51: [Train] Loss = -2.2918|	[Valid] XYZ Loss = -2.0064| Time Loss = 0.1174| Dir Loss = 0.0552|	XYZ Err(L2 Distance): 62.1090|	XY Err: 62.1090|	Time Err: 19.8485|	Direction Err: 12.5938
+2025-12-29 16:10:53,910 - INFO - Epoch 52: [Train] Loss = -2.2961|	[Valid] XYZ Loss = -2.1667| Time Loss = 0.1177| Dir Loss = 0.0465|	XYZ Err(L2 Distance): 57.5879|	XY Err: 57.5879|	Time Err: 19.8508|	Direction Err: 11.7125
+2025-12-29 16:11:00,598 - INFO - Epoch 53: [Train] Loss = -2.2769|	[Valid] XYZ Loss = -1.8486| Time Loss = 0.1392| Dir Loss = 0.1088|	XYZ Err(L2 Distance): 81.0281|	XY Err: 81.0281|	Time Err: 22.4793|	Direction Err: 18.9549
+2025-12-29 16:11:07,751 - INFO - Epoch 54: [Train] Loss = -2.2988|	[Valid] XYZ Loss = -2.0579| Time Loss = 0.1087| Dir Loss = 0.0397|	XYZ Err(L2 Distance): 56.8127|	XY Err: 56.8127|	Time Err: 19.6976|	Direction Err: 11.0276
+2025-12-29 16:11:14,407 - INFO - Epoch 55: [Train] Loss = -2.3278|	[Valid] XYZ Loss = -2.1958| Time Loss = 0.1153| Dir Loss = 0.0363|	XYZ Err(L2 Distance): 56.3783|	XY Err: 56.3783|	Time Err: 20.7447|	Direction Err: 10.6689
+2025-12-29 16:11:20,191 - INFO - Epoch 56: [Train] Loss = -2.3243|	[Valid] XYZ Loss = -2.1345| Time Loss = 0.1200| Dir Loss = 0.0404|	XYZ Err(L2 Distance): 59.2414|	XY Err: 59.2414|	Time Err: 21.8261|	Direction Err: 11.0651
+2025-12-29 16:11:27,135 - INFO - Epoch 57: [Train] Loss = -2.3238|	[Valid] XYZ Loss = -2.1276| Time Loss = 0.1106| Dir Loss = 0.0341|	XYZ Err(L2 Distance): 56.8344|	XY Err: 56.8344|	Time Err: 19.6464|	Direction Err: 10.6084
+2025-12-29 16:11:34,248 - INFO - Epoch 58: [Train] Loss = -2.3388|	[Valid] XYZ Loss = -2.1450| Time Loss = 0.1247| Dir Loss = 0.0353|	XYZ Err(L2 Distance): 55.6506|	XY Err: 55.6506|	Time Err: 21.5576|	Direction Err: 10.6322
+2025-12-29 16:11:40,645 - INFO - Epoch 59: [Train] Loss = -2.3400|	[Valid] XYZ Loss = -2.1395| Time Loss = 0.1207| Dir Loss = 0.0443|	XYZ Err(L2 Distance): 58.7493|	XY Err: 58.7493|	Time Err: 21.2145|	Direction Err: 11.3588
+2025-12-29 16:11:46,517 - INFO - Epoch 60: [Train] Loss = -2.2576|	[Valid] XYZ Loss = -2.2261| Time Loss = 0.1196| Dir Loss = 0.0375|	XYZ Err(L2 Distance): 56.7248|	XY Err: 56.7248|	Time Err: 20.3853|	Direction Err: 10.8456
+2025-12-29 16:11:53,669 - INFO - Epoch 61: [Train] Loss = -2.3324|	[Valid] XYZ Loss = -2.1780| Time Loss = 0.1051| Dir Loss = 0.0349|	XYZ Err(L2 Distance): 56.7611|	XY Err: 56.7611|	Time Err: 18.8791|	Direction Err: 10.9348
+2025-12-29 16:12:01,008 - INFO - Epoch 62: [Train] Loss = -2.3676|	[Valid] XYZ Loss = -2.1323| Time Loss = 0.1019| Dir Loss = 0.0361|	XYZ Err(L2 Distance): 55.8292|	XY Err: 55.8292|	Time Err: 18.5423|	Direction Err: 10.5762
+2025-12-29 16:12:06,902 - INFO - Epoch 63: [Train] Loss = -2.3438|	[Valid] XYZ Loss = -2.0275| Time Loss = 0.1354| Dir Loss = 0.0376|	XYZ Err(L2 Distance): 57.2521|	XY Err: 57.2521|	Time Err: 22.5888|	Direction Err: 11.0874
+2025-12-29 16:12:13,036 - INFO - Epoch 64: [Train] Loss = -2.3618|	[Valid] XYZ Loss = -2.1223| Time Loss = 0.1053| Dir Loss = 0.0398|	XYZ Err(L2 Distance): 57.3894|	XY Err: 57.3894|	Time Err: 18.6768|	Direction Err: 11.0896
+2025-12-29 16:12:20,190 - INFO - Epoch 65: [Train] Loss = -2.3693|	[Valid] XYZ Loss = -2.0448| Time Loss = 0.1329| Dir Loss = 0.1122|	XYZ Err(L2 Distance): 80.4154|	XY Err: 80.4154|	Time Err: 21.2825|	Direction Err: 17.4722
+2025-12-29 16:12:27,418 - INFO - Epoch 66: [Train] Loss = -2.3571|	[Valid] XYZ Loss = -2.0781| Time Loss = 0.1232| Dir Loss = 0.0494|	XYZ Err(L2 Distance): 60.5898|	XY Err: 60.5898|	Time Err: 21.4394|	Direction Err: 11.9407
+2025-12-29 16:12:33,222 - INFO - Epoch 67: [Train] Loss = -2.3465|	[Valid] XYZ Loss = -2.0994| Time Loss = 0.0978| Dir Loss = 0.0378|	XYZ Err(L2 Distance): 57.3401|	XY Err: 57.3401|	Time Err: 17.7608|	Direction Err: 10.8515
+2025-12-29 16:12:39,626 - INFO - Epoch 68: [Train] Loss = -2.3850|	[Valid] XYZ Loss = -1.9202| Time Loss = 0.1203| Dir Loss = 0.0479|	XYZ Err(L2 Distance): 61.1960|	XY Err: 61.1960|	Time Err: 20.0174|	Direction Err: 11.7968
+2025-12-29 16:12:46,723 - INFO - Epoch 69: [Train] Loss = -2.3745|	[Valid] XYZ Loss = -2.0364| Time Loss = 0.1652| Dir Loss = 0.0392|	XYZ Err(L2 Distance): 57.7867|	XY Err: 57.7867|	Time Err: 25.1301|	Direction Err: 10.7709
+2025-12-29 16:12:53,699 - INFO - Epoch 70: [Train] Loss = -2.3877|	[Valid] XYZ Loss = -1.8602| Time Loss = 0.1289| Dir Loss = 0.0502|	XYZ Err(L2 Distance): 60.2959|	XY Err: 60.2959|	Time Err: 21.5516|	Direction Err: 11.9446
+2025-12-29 16:13:00,263 - INFO - Epoch 71: [Train] Loss = -2.3884|	[Valid] XYZ Loss = -1.9483| Time Loss = 0.1080| Dir Loss = 0.0328|	XYZ Err(L2 Distance): 56.3992|	XY Err: 56.3992|	Time Err: 18.6125|	Direction Err: 10.1410
+2025-12-29 16:13:08,680 - INFO - Epoch 72: [Train] Loss = -2.3535|	[Valid] XYZ Loss = -1.9130| Time Loss = 0.1099| Dir Loss = 0.0417|	XYZ Err(L2 Distance): 61.8080|	XY Err: 61.8080|	Time Err: 19.1806|	Direction Err: 11.7268
+2025-12-29 16:13:17,354 - INFO - Epoch 73: [Train] Loss = -2.4262|	[Valid] XYZ Loss = -1.9940| Time Loss = 0.1392| Dir Loss = 0.0479|	XYZ Err(L2 Distance): 58.2305|	XY Err: 58.2305|	Time Err: 22.6980|	Direction Err: 11.8322
+2025-12-29 16:13:25,404 - INFO - Epoch 74: [Train] Loss = -2.4126|	[Valid] XYZ Loss = -1.9376| Time Loss = 0.1082| Dir Loss = 0.0372|	XYZ Err(L2 Distance): 60.0970|	XY Err: 60.0970|	Time Err: 18.9370|	Direction Err: 11.3524
+2025-12-29 16:13:33,633 - INFO - Epoch 75: [Train] Loss = -2.3935|	[Valid] XYZ Loss = -1.9623| Time Loss = 0.1153| Dir Loss = 0.0383|	XYZ Err(L2 Distance): 57.1154|	XY Err: 57.1154|	Time Err: 19.8020|	Direction Err: 10.7015
+2025-12-29 16:13:42,161 - INFO - Epoch 76: [Train] Loss = -2.4346|	[Valid] XYZ Loss = -1.8756| Time Loss = 0.1245| Dir Loss = 0.0479|	XYZ Err(L2 Distance): 63.8103|	XY Err: 63.8103|	Time Err: 20.8843|	Direction Err: 12.3134
+2025-12-29 16:13:50,543 - INFO - Epoch 77: [Train] Loss = -2.4111|	[Valid] XYZ Loss = -1.7478| Time Loss = 0.1090| Dir Loss = 0.0429|	XYZ Err(L2 Distance): 57.1496|	XY Err: 57.1496|	Time Err: 19.7928|	Direction Err: 10.9007
+2025-12-29 16:13:58,612 - INFO - Epoch 78: [Train] Loss = -2.4221|	[Valid] XYZ Loss = -1.9641| Time Loss = 0.1167| Dir Loss = 0.0404|	XYZ Err(L2 Distance): 58.0991|	XY Err: 58.0991|	Time Err: 20.6399|	Direction Err: 11.2187
+2025-12-29 16:14:07,254 - INFO - Epoch 79: [Train] Loss = -2.4363|	[Valid] XYZ Loss = -2.0298| Time Loss = 0.1313| Dir Loss = 0.0374|	XYZ Err(L2 Distance): 55.2000|	XY Err: 55.2000|	Time Err: 22.6757|	Direction Err: 10.3966
+2025-12-29 16:14:15,317 - INFO - Epoch 80: [Train] Loss = -2.3970|	[Valid] XYZ Loss = -1.9090| Time Loss = 0.1105| Dir Loss = 0.0407|	XYZ Err(L2 Distance): 57.7928|	XY Err: 57.7928|	Time Err: 19.3668|	Direction Err: 11.1112
+2025-12-29 16:14:21,208 - INFO - Epoch 81: [Train] Loss = -2.4365|	[Valid] XYZ Loss = -2.0453| Time Loss = 0.1252| Dir Loss = 0.0609|	XYZ Err(L2 Distance): 64.5782|	XY Err: 64.5782|	Time Err: 20.4014|	Direction Err: 13.0774
+2025-12-29 16:14:27,746 - INFO - Epoch 82: [Train] Loss = -2.4486|	[Valid] XYZ Loss = -1.9727| Time Loss = 0.1205| Dir Loss = 0.0386|	XYZ Err(L2 Distance): 57.9322|	XY Err: 57.9322|	Time Err: 20.7095|	Direction Err: 10.7275
+2025-12-29 16:14:34,945 - INFO - Epoch 83: [Train] Loss = -2.4545|	[Valid] XYZ Loss = -1.7732| Time Loss = 0.1007| Dir Loss = 0.0363|	XYZ Err(L2 Distance): 58.4125|	XY Err: 58.4125|	Time Err: 18.4661|	Direction Err: 10.8702
+2025-12-29 16:14:43,230 - INFO - Epoch 84: [Train] Loss = -2.4410|	[Valid] XYZ Loss = -2.0473| Time Loss = 0.1068| Dir Loss = 0.0387|	XYZ Err(L2 Distance): 56.8719|	XY Err: 56.8719|	Time Err: 19.2583|	Direction Err: 10.6048
+2025-12-29 16:14:51,115 - INFO - Epoch 85: [Train] Loss = -2.4650|	[Valid] XYZ Loss = -1.9257| Time Loss = 0.1092| Dir Loss = 0.0343|	XYZ Err(L2 Distance): 56.3241|	XY Err: 56.3241|	Time Err: 18.8275|	Direction Err: 10.3152
+2025-12-29 16:15:00,356 - INFO - Epoch 86: [Train] Loss = -2.4555|	[Valid] XYZ Loss = -1.5629| Time Loss = 0.1071| Dir Loss = 0.0410|	XYZ Err(L2 Distance): 58.4464|	XY Err: 58.4464|	Time Err: 18.8731|	Direction Err: 11.4813
+2025-12-29 16:15:09,700 - INFO - Epoch 87: [Train] Loss = -2.4507|	[Valid] XYZ Loss = -1.9978| Time Loss = 0.1244| Dir Loss = 0.0419|	XYZ Err(L2 Distance): 58.0256|	XY Err: 58.0256|	Time Err: 20.5527|	Direction Err: 11.2901
+2025-12-29 16:15:18,095 - INFO - Epoch 88: [Train] Loss = -2.4646|	[Valid] XYZ Loss = -1.7628| Time Loss = 0.1034| Dir Loss = 0.0415|	XYZ Err(L2 Distance): 58.7335|	XY Err: 58.7335|	Time Err: 18.7965|	Direction Err: 11.2402
+2025-12-29 16:15:26,763 - INFO - Epoch 89: [Train] Loss = -2.5012|	[Valid] XYZ Loss = -1.8589| Time Loss = 0.0981| Dir Loss = 0.0528|	XYZ Err(L2 Distance): 63.5517|	XY Err: 63.5517|	Time Err: 18.1641|	Direction Err: 12.3213
+2025-12-29 16:15:36,045 - INFO - Epoch 90: [Train] Loss = -2.4909|	[Valid] XYZ Loss = -1.7795| Time Loss = 0.1007| Dir Loss = 0.0359|	XYZ Err(L2 Distance): 57.8539|	XY Err: 57.8539|	Time Err: 17.9353|	Direction Err: 10.8087
+2025-12-29 16:15:45,027 - INFO - Epoch 91: [Train] Loss = -2.4863|	[Valid] XYZ Loss = -1.7659| Time Loss = 0.0962| Dir Loss = 0.0411|	XYZ Err(L2 Distance): 58.3548|	XY Err: 58.3548|	Time Err: 17.8935|	Direction Err: 10.8980
+2025-12-29 16:15:53,228 - INFO - Epoch 92: [Train] Loss = -2.4667|	[Valid] XYZ Loss = -1.7129| Time Loss = 0.1019| Dir Loss = 0.0384|	XYZ Err(L2 Distance): 58.4739|	XY Err: 58.4739|	Time Err: 18.1287|	Direction Err: 10.8215
+2025-12-29 16:16:02,500 - INFO - Epoch 93: [Train] Loss = -2.4957|	[Valid] XYZ Loss = -1.7656| Time Loss = 0.1008| Dir Loss = 0.0408|	XYZ Err(L2 Distance): 56.5860|	XY Err: 56.5860|	Time Err: 18.5763|	Direction Err: 10.8097
+2025-12-29 16:16:11,977 - INFO - Epoch 94: [Train] Loss = -2.4969|	[Valid] XYZ Loss = -1.6817| Time Loss = 0.1020| Dir Loss = 0.0379|	XYZ Err(L2 Distance): 56.4642|	XY Err: 56.4642|	Time Err: 18.0468|	Direction Err: 10.6914
+2025-12-29 16:16:19,930 - INFO - Epoch 95: [Train] Loss = -2.5103|	[Valid] XYZ Loss = -1.5957| Time Loss = 0.0962| Dir Loss = 0.0448|	XYZ Err(L2 Distance): 59.9488|	XY Err: 59.9488|	Time Err: 17.6685|	Direction Err: 11.5574
+2025-12-29 16:16:28,918 - INFO - Epoch 96: [Train] Loss = -2.5249|	[Valid] XYZ Loss = -1.4419| Time Loss = 0.1108| Dir Loss = 0.0406|	XYZ Err(L2 Distance): 58.3578|	XY Err: 58.3578|	Time Err: 19.4940|	Direction Err: 10.9294
+2025-12-29 16:16:38,384 - INFO - Epoch 97: [Train] Loss = -2.5168|	[Valid] XYZ Loss = -1.5210| Time Loss = 0.0982| Dir Loss = 0.0454|	XYZ Err(L2 Distance): 60.3075|	XY Err: 60.3075|	Time Err: 18.2802|	Direction Err: 11.4728
+2025-12-29 16:16:46,776 - INFO - Epoch 98: [Train] Loss = -2.5254|	[Valid] XYZ Loss = -1.4264| Time Loss = 0.0967| Dir Loss = 0.0383|	XYZ Err(L2 Distance): 56.5716|	XY Err: 56.5716|	Time Err: 18.2320|	Direction Err: 10.7537
+2025-12-29 16:16:55,209 - INFO - Epoch 99: [Train] Loss = -2.5103|	[Valid] XYZ Loss = -1.5709| Time Loss = 0.0975| Dir Loss = 0.0448|	XYZ Err(L2 Distance): 61.5899|	XY Err: 61.5899|	Time Err: 17.9339|	Direction Err: 11.6478
+2025-12-29 16:17:04,556 - INFO - Epoch 100: [Train] Loss = -2.5388|	[Valid] XYZ Loss = -1.4015| Time Loss = 0.1046| Dir Loss = 0.0388|	XYZ Err(L2 Distance): 57.5349|	XY Err: 57.5349|	Time Err: 18.7081|	Direction Err: 10.7763
+2025-12-29 16:17:04,556 - INFO - Training finished. Best epoch: 44|	Best [Valid] loss: -2.2312|	XYZ Err: 56.9447|	Time Err: 19.5119|	Dir Err: 11.31
+2025-12-29 16:17:08,001 - INFO - 📄 Saved test results to ./results\ImprovedTransformerModel\20251229_160250_mc20.csv
+2025-12-29 16:17:11,101 - INFO - 📄 Saved visualization
