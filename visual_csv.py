@@ -280,8 +280,8 @@ def categorize_shot_custom(sequence):
     根据: 位置(3) x 高度(2) x 速度(2) 进行分类
     """
     # 1. 获取关键数值
-    hit_frame = sequence[-1]
-    prev_frame = sequence[-10]
+    hit_frame = sequence[-6]
+    prev_frame = sequence[-16]
 
     h_val = hit_frame[WRIST_IDX, AXIS_HEIGHT]
     p_val = hit_frame[HIP_IDX, AXIS_DEPTH]
@@ -384,15 +384,15 @@ def visual_samples_distribution(df):
             seq = parse_pose_sequence(lines)
 
             # 1. 击球高度 (取最后一帧)
-            h = seq[-1, WRIST_IDX, AXIS_HEIGHT]
+            h = seq[-6, WRIST_IDX, AXIS_HEIGHT]
 
             # 2. 击球位置 (取最后一帧)
-            p = seq[-1, HIP_IDX, AXIS_DEPTH]
+            p = seq[-6, HIP_IDX, AXIS_DEPTH]
 
             # 3. 挥拍速度 (取最后10帧的位移均值)
             # 计算第50帧和第40帧之间手腕的欧氏距离
-            curr_pos = seq[-1, WRIST_IDX]
-            prev_pos = seq[-10, WRIST_IDX]
+            curr_pos = seq[-6, WRIST_IDX]
+            prev_pos = seq[-16, WRIST_IDX]
             dist = np.linalg.norm(curr_pos - prev_pos)
             v = dist / 10.0  # 单位：距离/帧
 
