@@ -549,7 +549,7 @@ class ImprovedTransformerModel(nn.Module):
         super().__init__()
         self.name = 'ImprovedTransformerModel'
         self.num_points = num_points
-        self.special_indices = [i for i in range(17 * 3, num_points * 3)]
+        self.special_indices = [i for i in range(17 * point_dim, num_points * point_dim)]
         self.input_dim = num_points * point_dim
         self.special_input_dim = len(self.special_indices)
         self.d_model = d_model

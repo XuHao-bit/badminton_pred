@@ -6,6 +6,7 @@ import torch
 from dataset import load_all_samples, BadmintonDataset, resampling
 from model import *
 from trainer import Trainer
+from visual_csv import visual_df
 
 import logging
 import os
@@ -76,6 +77,7 @@ def main():
     # model = SimplifiedLSTMRegressor()
     model = ImprovedTransformerModel(seq_len=args.max_len, num_points=args.points_num)
 
+    set_seed()
     samples = load_all_samples("../data/data_1217_ball_ext5", args.points_num)
     random.shuffle(samples)
     split_idx = int(0.8 * len(samples))
@@ -95,9 +97,6 @@ def main():
     random.shuffle(samples)
     logger.info(f"一共加载到 {len(samples)} 个样本")
 
-    # 划分 train/test
-    split_idx = int(0.8 * len(samples))
-    train_samples = samples[:split_idx]
     # test_samples = samples[split_idx:]
     test_samples = samples[:]
 
