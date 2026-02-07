@@ -59,7 +59,7 @@ def set_seed(seed=42):
     torch.backends.cudnn.benchmark = False
 
 class Trainer:
-    def __init__(self, args, logger, model, train_dataset, test_dataset, device=None, batch_size=32, lr=1e-3, seed=42, save_dir="models"):
+    def __init__(self, args, logger, model, train_dataset, test_dataset, device=None, batch_size=32, lr=1e-3, seed=42, save_dir="models", pretrained_path=None, finetune=False):
         set_seed(seed)
         self.logger = logger
         self.args = args
@@ -75,7 +75,26 @@ class Trainer:
                                       collate_fn=lambda batch: collate_fn_dynamic(batch, max_len=args.max_len), num_workers=0)
 
         # self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr, weight_decay=1e-5)
+        # self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr, weight_decay=1e-5)
+        if finetune:
+            backbone_params = []
+            head_params = []
+            for name, param in self.model.named_parameters():
+                if not ("mlp" in name):
+                    # print('backbone', name)
+                    backbone_params.append(param)
+                else:
+                    # print('head', name)
+                    head_params.append(param)
+            self.optimizer = torch.optim.Adam([
+                {"params": backbone_params, "lr": lr * 0.1},
+                {"params": head_params, "lr": lr},
+            ], weight_decay=1e-5)
+        else:
+            self.optimizer = torch.optim.Adam(
+                self.model.parameters(), lr=lr, weight_decay=1e-5
+            )
+
         self.criterion = torch.nn.MSELoss()
         self.criterion_cos = torch.nn.CosineEmbeddingLoss()
         self.l1_criterion = torch.nn.L1Loss()
@@ -84,6 +103,11 @@ class Trainer:
         self.save_dir = save_dir
         self.best_model_path = os.path.join(self.save_dir, f"{self.model.name}_{self.logger.time}.pt")
         os.makedirs(save_dir, exist_ok=True)
+
+        if pretrained_path is not None:
+            ckpt = torch.load(pretrained_path, map_location=self.device)
+            self.model.load_state_dict(ckpt, strict=False)
+            self.logger.info(f"Loaded pretrained model from {pretrained_path}")
 
     def cal_xyz_loss(self, pred_xyz, labels_xyz):
         # 1. 计算元素级的 error（向量/张量）
