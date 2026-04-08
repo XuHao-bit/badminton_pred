@@ -26,7 +26,7 @@ def inference_onnx(model_path, seq_data, mask_data):
     }
 
     # run 的第一个参数为 None 表示获取所有输出，也可以指定 ['output']
-    outputs = session.run(['output'], onnx_inputs)
+    outputs = session.run(['xyz', 'var', 'time', 'direction'], onnx_inputs)
 
     # outputs 是一个列表，获取第一个输出
     return outputs[0]
@@ -85,7 +85,7 @@ def batch_onnx_inference_and_eval(model_path, folder_path):
                 'mask': input_mask
             }
             # 假设模型输出名称为 'output'
-            prediction = session.run(['output'], onnx_inputs)[0]
+            prediction = session.run(['xyz', 'var', 'time', 'direction'], onnx_inputs)[0]
 
             # 如果预测结果带 batch 维度 (1, 3)，则压平
             pred_coords = prediction.flatten()
@@ -106,20 +106,20 @@ def batch_onnx_inference_and_eval(model_path, folder_path):
 
 
 # --- 使用示例 ---
-model_path = "./models\ImprovedTransformerModel\ImprovedTransformerModel_20251225_212910.onnx"
-data_dir = "../data/data_1225_test_ext5"
-result = batch_onnx_inference_and_eval(model_path, data_dir)
-print(f"所有文件的平均欧氏距离为: {result}")
+model_path = "./models/ImprovedTransformerModel/before_20260323_165346.onnx"
+# data_dir = "../data/data_1225_test_ext5"
+# result = batch_onnx_inference_and_eval(model_path, data_dir)
+# print(f"所有文件的平均欧氏距离为: {result}")
 
 
 # 模拟输入数据（支持 dynamic_axes 定义的动态尺寸）
-# batch_size = 1
-# seq_len = 50
-# dummy_seq_np = np.random.randn(batch_size, seq_len, 63).astype(np.float32)
-# dummy_mask_np = np.ones((batch_size, seq_len), dtype=bool)
-#
-# # 执行
-# result = inference_onnx(model_path, dummy_seq_np, dummy_mask_np)
-#
-# print(f"输出形状: {result.shape}")
-# print(f"推理结果预览: \n{result}")
+batch_size = 1
+seq_len = 50
+dummy_seq_np = np.random.randn(batch_size, seq_len, 63).astype(np.float32)
+dummy_mask_np = np.ones((batch_size, seq_len), dtype=bool)
+
+# 执行
+result = inference_onnx(model_path, dummy_seq_np, dummy_mask_np)
+
+print(f"输出形状: {result.shape}")
+print(f"推理结果预览: \n{result}")

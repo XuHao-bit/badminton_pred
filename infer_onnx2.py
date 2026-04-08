@@ -126,6 +126,7 @@ def batch_onnx_inference_and_eval(model_path, folder_path, mode='after', skip_n=
             # ========================
             distance = np.linalg.norm(pred_coords - label_coords)
             all_distances.append(distance)
+            #print(pred_coords)
 
         except Exception as e:
             print(f"处理文件 {filename} 时出错: {e}")
@@ -141,12 +142,12 @@ def batch_onnx_inference_and_eval(model_path, folder_path, mode='after', skip_n=
 
 data_dir = "../badminton-dataset/20260202_all"
 # after 模式（直接66维）
-model_path = "./models/ImprovedTransformerModel/after_20260323_175728.onnx"
+model_path = "./models/ImprovedTransformerModel/after_scene2.onnx"
 result = batch_onnx_inference_and_eval(model_path, data_dir, mode='after')
 print(f"所有文件的平均欧氏距离为: {result}")
 
 # before 模式（用63维 + 往前偏移10帧）
-model_path = "./models/ImprovedTransformerModel/before_20260323_165346.onnx"
+model_path = "./models/ImprovedTransformerModel/before_scene2.onnx"
 result = batch_onnx_inference_and_eval(model_path, data_dir, mode='before', skip_n=5)
 print(f"所有文件的平均欧氏距离为: {result}")
 
